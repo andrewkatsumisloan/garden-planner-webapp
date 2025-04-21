@@ -10,12 +10,12 @@ services:
     env_file:
       - ./client/.env
     depends_on:
-      - backend
+      - server
     volumes:
       - ./client:/app
       - /app/node_modules
 
-  backend:
+  server:
     build:
       context: ./server
       dockerfile: Dockerfile
@@ -23,5 +23,39 @@ services:
       - "8000:8000"
     volumes:
       - ./server:/app
+    environment:
+      # Database connection - set to use the local postgres container by default
+      # To use AWS RDS instead of the local container, comment out these vars
+      # and set the DATABASE_URL in the .env file
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=appdb
+      # Prevent Python from writing .pyc files
+      - PYTHONDONTWRITEBYTECODE=1
     env_file:
       - ./server/.env
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=appdb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+    driver: local

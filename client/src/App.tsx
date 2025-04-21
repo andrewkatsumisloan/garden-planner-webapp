@@ -4,6 +4,7 @@ import {
   SignInButton,
   UserButton,
   useUser,
+  useClerk,
 } from "@clerk/clerk-react";
 import {
   Card,
@@ -24,6 +25,7 @@ import {
   GitBranch,
 } from "lucide-react";
 import "./App.css";
+import { API_BASE_URL } from "./config";
 
 // Get Clerk publishable key from environment variable
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
@@ -45,6 +47,7 @@ interface BackendInfo {
 
 function LandingContent() {
   const { isLoaded, isSignedIn, user } = useUser();
+  const clerk = useClerk();
   const [backendInfo, setBackendInfo] = useState<BackendInfo | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -52,7 +55,7 @@ function LandingContent() {
     const fetchBackendInfo = async () => {
       try {
         setIsLoading(true);
-        const response = await fetch("http://localhost:8000/api/info");
+        const response = await fetch(`${API_BASE_URL}/api/info`);
         const data = await response.json();
         setBackendInfo(data);
       } catch (error) {
@@ -64,6 +67,53 @@ function LandingContent() {
 
     fetchBackendInfo();
   }, []);
+
+  // Fetch user profile when signed in to trigger user creation
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      if (!isSignedIn || !user) return;
+
+      try {
+        console.log("User info from Clerk:", {
+          id: user.id,
+          email: user.primaryEmailAddress?.emailAddress,
+          name: user.fullName || user.username,
+        });
+
+        const token = await clerk.session?.getToken();
+
+        if (!token) {
+          console.error("No token available");
+          return;
+        }
+
+        // Send user info as headers
+        const response = await fetch(`${API_BASE_URL}/api/v1/users/me`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "X-Clerk-User-Email": user.primaryEmailAddress?.emailAddress || "",
+            "X-Clerk-User-Name": user.fullName || user.username || "",
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log("User profile fetched/created successfully:", data);
+        } else {
+          console.error(
+            "Failed to fetch/create user profile:",
+            response.status
+          );
+        }
+      } catch (error) {
+        console.error("Error fetching/creating user profile:", error);
+      }
+    };
+
+    if (isSignedIn && user) {
+      fetchUserProfile();
+    }
+  }, [isSignedIn, user, clerk.session]);
 
   if (!isLoaded) {
     return (

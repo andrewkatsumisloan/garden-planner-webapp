@@ -1,5 +1,8 @@
 FROM python:3.13-slim
 
+# Set environment variable to prevent Python from writing .pyc files
+ENV PYTHONDONTWRITEBYTECODE=1 
+
 WORKDIR /app
 
 # Copy requirements file (create from Pipfile if needed)

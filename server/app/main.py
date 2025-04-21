@@ -1,6 +1,18 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import logging
+
+from app.api.api import api_router
+from app.core.config import settings
+
+# Import models to ensure they are registered with SQLAlchemy
+from app.models import models
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 
 app = FastAPI(title="Fullstack Template API")
 
@@ -12,6 +24,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include API router
+app.include_router(api_router, prefix=settings.API_V1_STR)
 
 
 # Example model

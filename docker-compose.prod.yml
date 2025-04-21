@@ -8,10 +8,10 @@ services:
     ports:
       - "80:80"
     depends_on:
-      - backend
+      - server
     restart: always
 
-  backend:
+  server:
     build:
       context: ./server
       dockerfile: Dockerfile.prod
