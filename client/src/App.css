@@ -1,169 +1,27 @@
-/* Base styles */
-:root {
-  --primary-color: #3b82f6;
-  --secondary-color: #1e40af;
-  --light-bg: #f8fafc;
-  --dark-bg: #0f172a;
-  --text-color: #334155;
-  --light-text: #f1f5f9;
-  --border-color: #e2e8f0;
-  --card-bg: #ffffff;
-  --hover-color: #dbeafe;
-}
+/* Base styles - many styles are now handled by shadcn and Tailwind */
+@import "tailwindcss" layer(base);
+@import "tailwindcss" layer(components);
+@import "tailwindcss" layer(utilities);
 
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell,
     'Open Sans', 'Helvetica Neue', sans-serif;
   margin: 0;
   padding: 0;
-  background-color: var(--light-bg);
-  color: var(--text-color);
   line-height: 1.6;
 }
 
-/* Container styles */
-.landing-container {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-}
-
-header {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  padding: 1rem 2rem;
-  background-color: var(--card-bg);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.auth-section {
-  margin-left: auto;
-}
-
-main {
-  flex: 1;
+/* Container styles for customization beyond Tailwind/shadcn */
+.container {
+  width: 100%;
   max-width: 1200px;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 0 1rem;
 }
 
-h1 {
-  font-size: 2.5rem;
-  text-align: center;
-  margin-bottom: 1.5rem;
-  color: var(--secondary-color);
-}
-
-.description {
-  text-align: center;
-  font-size: 1.2rem;
-  max-width: 800px;
-  margin: 0 auto 3rem;
-}
-
-/* Stack info cards */
-.stack-info {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 2rem;
-  margin-bottom: 3rem;
-}
-
-.stack-card {
-  background-color: var(--card-bg);
-  border-radius: 8px;
-  padding: 1.5rem;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-  transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
-}
-
-.stack-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
-}
-
-.stack-card h2 {
-  color: var(--primary-color);
-  font-size: 1.5rem;
-  margin-top: 0;
-  margin-bottom: 1rem;
-  border-bottom: 2px solid var(--hover-color);
-  padding-bottom: 0.5rem;
-}
-
-.stack-card ul {
-  padding-left: 1.2rem;
-  margin-bottom: 0;
-}
-
-.stack-card li {
-  margin-bottom: 0.5rem;
-}
-
-/* Welcome user section */
-.welcome-user {
-  background-color: var(--hover-color);
-  border-radius: 8px;
-  padding: 1.5rem;
-  margin-bottom: 2rem;
-  text-align: center;
-}
-
-.welcome-user h3 {
-  margin-top: 0;
-  color: var(--secondary-color);
-}
-
-/* Getting started section */
-.getting-started {
-  background-color: var(--card-bg);
-  border-radius: 8px;
-  padding: 1.5rem;
-  margin-bottom: 2rem;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-}
-
-.getting-started h2 {
-  color: var(--primary-color);
-  margin-top: 0;
-}
-
-/* Footer */
-footer {
-  text-align: center;
-  padding: 1.5rem;
-  background-color: var(--dark-bg);
-  color: var(--light-text);
-}
-
-/* Auth button styles */
-.sign-in-button {
-  background-color: var(--primary-color);
-  color: white;
-  border: none;
-  border-radius: 4px;
-  padding: 0.5rem 1rem;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.sign-in-button:hover {
-  background-color: var(--secondary-color);
-}
-
-/* Responsive styles */
+/* Responsive adjustments */
 @media (max-width: 768px) {
-  .stack-info {
-    grid-template-columns: 1fr;
-  }
-
-  h1 {
-    font-size: 2rem;
-  }
-
-  .description {
-    font-size: 1rem;
+  .container {
+    padding: 0 1.5rem;
   }
 }
