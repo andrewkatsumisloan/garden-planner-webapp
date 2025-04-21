@@ -81,12 +81,13 @@ def validate_jwt(token: str) -> Dict:
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
-    x_clerk_user_email: Optional[str] = Header(None),
-    x_clerk_user_name: Optional[str] = Header(None),
 ) -> User:
     token = credentials.credentials
     payload = validate_jwt(token)
 
+    print("JWT Payload:", payload)
+
+    # Get user ID from the subject claim
     user_id = payload.get("sub")
     if not user_id:
         raise HTTPException(
@@ -95,24 +96,86 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Check if user exists in database
     user = db.query(User).filter_by(clerk_user_id=user_id).first()
     if not user:
-        # Use the headers provided by the frontend for user info
-        email = x_clerk_user_email
-        name = x_clerk_user_name
+        # We need to fetch user information from Clerk API
+        import httpx
+        import os
 
-        # Validate that we have the required information
-        if not email or not name:
+        # Get Clerk API key from environment
+        clerk_api_key = os.getenv("CLERK_SECRET_KEY")
+        if not clerk_api_key:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Unable to create user: Missing required user information. Please ensure the X-Clerk-User-Email and X-Clerk-User-Name headers are provided.",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Clerk API key not configured",
             )
 
-        user = User(clerk_user_id=user_id, email=email, name=name)
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-        print(f"Created new user: {user.id}, {user.email}, {user.name}")
+        # Fetch user data from Clerk API
+        try:
+            async with httpx.AsyncClient() as client:
+                headers = {"Authorization": f"Bearer {clerk_api_key}"}
+                response = await client.get(
+                    f"https://api.clerk.dev/v1/users/{user_id}",
+                    headers=headers,
+                )
+
+                if response.status_code != 200:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Failed to get user data from Clerk: {response.text}",
+                    )
+
+                clerk_user_data = response.json()
+
+                # Extract email and name from Clerk data
+                email = None
+                primary_email_obj = next(
+                    (
+                        e
+                        for e in clerk_user_data.get("email_addresses", [])
+                        if e.get("id")
+                        == clerk_user_data.get("primary_email_address_id")
+                    ),
+                    None,
+                )
+
+                if primary_email_obj:
+                    email = primary_email_obj.get("email_address")
+
+                # Get name from Clerk data
+                first_name = clerk_user_data.get("first_name")
+                last_name = clerk_user_data.get("last_name")
+
+                if first_name and last_name:
+                    name = f"{first_name} {last_name}"
+                elif first_name:
+                    name = first_name
+                elif last_name:
+                    name = last_name
+                else:
+                    name = clerk_user_data.get("username")
+
+                if not email or not name:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Unable to create user: Missing required user information from Clerk API.",
+                    )
+
+                # Create the user in our database
+                user = User(clerk_user_id=user_id, email=email, name=name)
+                db.add(user)
+                db.commit()
+                db.refresh(user)
+                print(
+                    f"Created new user from Clerk API: {user.id}, {user.email}, {user.name}"
+                )
+
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error fetching user data from Clerk: {str(e)}",
+            )
 
     return user
 

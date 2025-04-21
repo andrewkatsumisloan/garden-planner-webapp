@@ -10,6 +10,8 @@ services:
     depends_on:
       - server
     restart: always
+    environment:
+      - VITE_API_BASE_URL=http://fullst-Publi-d0tjcsK9Ryx0-1935965929.us-west-1.elb.amazonaws.com
 
   server:
     build:

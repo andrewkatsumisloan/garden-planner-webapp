@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
 
     # Database - Primary connection string
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./app.db")
+    DATABASE_URL: Optional[str] = None
 
     # Database - Component parts (used if DATABASE_URL is not provided)
     DB_USER: Optional[str] = None
@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     # Clerk Authentication
     CLERK_JWT_ISSUER: Optional[str] = None
     CLERK_AUDIENCE: Optional[str] = None
+    CLERK_SECRET_KEY: Optional[str] = None
 
     model_config = {
         "case_sensitive": True,

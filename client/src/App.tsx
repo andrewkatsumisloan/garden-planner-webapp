@@ -28,7 +28,8 @@ import "./App.css";
 import { API_BASE_URL } from "./config";
 
 // Get Clerk publishable key from environment variable
-const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+const clerkPubKey =
+  "pk_test_cHJlbWl1bS1oZXJyaW5nLTcxLmNsZXJrLmFjY291bnRzLmRldiQ";
 
 if (!clerkPubKey) {
   throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY environment variable");
@@ -87,26 +88,21 @@ function LandingContent() {
           return;
         }
 
-        // Send user info as headers
+        // Simple request with just the Authorization header
         const response = await fetch(`${API_BASE_URL}/api/v1/users/me`, {
           headers: {
             Authorization: `Bearer ${token}`,
-            "X-Clerk-User-Email": user.primaryEmailAddress?.emailAddress || "",
-            "X-Clerk-User-Name": user.fullName || user.username || "",
           },
         });
 
         if (response.ok) {
           const data = await response.json();
-          console.log("User profile fetched/created successfully:", data);
+          console.log("User profile fetched successfully:", data);
         } else {
-          console.error(
-            "Failed to fetch/create user profile:",
-            response.status
-          );
+          console.error("Failed to fetch user profile:", response.status);
         }
       } catch (error) {
-        console.error("Error fetching/creating user profile:", error);
+        console.error("Error fetching user profile:", error);
       }
     };
 
