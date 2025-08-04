@@ -197,12 +197,66 @@ export function GardenPlanner() {
     }
   }, [user]);
 
-  // Load available gardens when component mounts
+  // Load available gardens and auto-load most recent when component mounts
   useEffect(() => {
     if (user) {
       loadAvailableGardens();
     }
   }, [user, loadAvailableGardens]);
+
+  // Load an existing garden
+  const handleLoadGarden = useCallback(
+    async (gardenId: number) => {
+      try {
+        const garden = await gardenService.getGarden(gardenId);
+        const canvasState = gardenService.savedGardenToCanvasState(garden);
+
+        setAppState((prev) => ({
+          ...prev,
+          currentGarden: garden,
+          userZipCode: garden.zip_code,
+          canvas: canvasState,
+          sidePanel: "recommendations",
+          plantRecommendations: null, // Clear previous recommendations
+        }));
+
+        // Get plant recommendations for this garden's zip code
+        if (garden.zip_code) {
+          await fetchPlantRecommendations(garden.zip_code);
+        }
+      } catch (error) {
+        console.error("Failed to load garden:", error);
+      }
+    },
+    [fetchPlantRecommendations]
+  );
+
+  // Auto-load most recent garden after gardens list is loaded
+  useEffect(() => {
+    if (
+      user &&
+      appState.availableGardens.length > 0 &&
+      !appState.currentGarden &&
+      !appState.isLoadingGardens
+    ) {
+      // Sort gardens by updated_at (most recent first), fallback to created_at
+      const sortedGardens = [...appState.availableGardens].sort((a, b) => {
+        const aDate = new Date(a.updated_at || a.created_at).getTime();
+        const bDate = new Date(b.updated_at || b.created_at).getTime();
+        return bDate - aDate;
+      });
+
+      if (sortedGardens.length > 0) {
+        handleLoadGarden(sortedGardens[0].id);
+      }
+    }
+  }, [
+    user,
+    appState.availableGardens,
+    appState.currentGarden,
+    appState.isLoadingGardens,
+    handleLoadGarden,
+  ]);
 
   // Create a new garden
   const handleCreateGarden = useCallback(
@@ -239,33 +293,6 @@ export function GardenPlanner() {
       }
     },
     [loadAvailableGardens, fetchPlantRecommendations]
-  );
-
-  // Load an existing garden
-  const handleLoadGarden = useCallback(
-    async (gardenId: number) => {
-      try {
-        const garden = await gardenService.getGarden(gardenId);
-        const canvasState = gardenService.savedGardenToCanvasState(garden);
-
-        setAppState((prev) => ({
-          ...prev,
-          currentGarden: garden,
-          userZipCode: garden.zip_code,
-          canvas: canvasState,
-          sidePanel: "recommendations",
-          plantRecommendations: null, // Clear previous recommendations
-        }));
-
-        // Get plant recommendations for this garden's zip code
-        if (garden.zip_code) {
-          await fetchPlantRecommendations(garden.zip_code);
-        }
-      } catch (error) {
-        console.error("Failed to load garden:", error);
-      }
-    },
-    [fetchPlantRecommendations]
   );
 
   // Delete a garden
