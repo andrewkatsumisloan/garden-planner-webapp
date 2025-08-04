@@ -19,9 +19,14 @@ app = FastAPI(title="Fullstack Template API")
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
+    allow_origins=[
+        "http://localhost:3000",  # React dev server
+        "http://localhost:5173",  # Vite dev server
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -58,6 +63,12 @@ async def get_info():
             "deployment": "Docker",
         },
     }
+
+
+@app.get("/api/test-cors")
+async def test_cors():
+    """Test endpoint to verify CORS is working"""
+    return {"message": "CORS is working!", "timestamp": "2024-01-01T00:00:00Z"}
 
 
 if __name__ == "__main__":

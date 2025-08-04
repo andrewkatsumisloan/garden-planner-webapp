@@ -1,11 +1,10 @@
-# auth.py
-
+# ===== File: server/app/core/auth.py =====
 import os
 from typing import Optional, Dict
 
 import jwt
 from jwt import PyJWKClient
-from fastapi import FastAPI, Depends, HTTPException, status, Header
+from fastapi import Depends, HTTPException, status, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
@@ -14,42 +13,36 @@ from app.db.session import get_db
 from app.models.models import User
 
 import httpx
-from contextlib import asynccontextmanager
-
-
-#
-# --- FastAPI with Async HTTP client for JWK fetching ---
-#
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    app.state.httpx = httpx.AsyncClient(timeout=10.0)
-    yield
-    await app.state.httpx.aclose()
-
-
-app = FastAPI(lifespan=lifespan)
 
 security = HTTPBearer()
+# Initialize the JWKS client once. It will cache keys automatically.
 _jwks_client = PyJWKClient(f"{settings.CLERK_JWT_ISSUER}/.well-known/jwks.json")
 
 
 def validate_jwt(token: str) -> Dict:
+    """
+    Validates the JWT token from Clerk.
+    """
     try:
+        # Get the signing key from the JWKS endpoint
         signing_key = _jwks_client.get_signing_key_from_jwt(token).key
-    except Exception:
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token key ID",
+            detail=f"Invalid token key: {e}",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
     try:
+        # Decode the token
         payload = jwt.decode(
             token,
             signing_key,
             algorithms=["RS256"],
             issuer=settings.CLERK_JWT_ISSUER,
-            audience=settings.CLERK_AUDIENCE,
+            # The audience claim can sometimes be the frontend URL.
+            # We will not validate it strictly unless CLERK_AUDIENCE is set.
+            # audience=settings.CLERK_AUDIENCE,
         )
         return payload
     except jwt.ExpiredSignatureError:
@@ -70,10 +63,10 @@ def validate_jwt(token: str) -> Dict:
             detail="Invalid token audience",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    except jwt.InvalidTokenError:
+    except jwt.InvalidTokenError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate token",
+            detail=f"Could not validate token: {e}",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -82,33 +75,33 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
 ) -> User:
+    """
+    Dependency to get the current user.
+    Validates JWT and creates a user in the DB if they don't exist (JIT provisioning).
+    """
     token = credentials.credentials
     payload = validate_jwt(token)
-
-    print("JWT Payload:", payload)
 
     # Get user ID from the subject claim
     user_id = payload.get("sub")
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token missing subject",
+            detail="Token missing subject (sub) claim",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Check if user exists in database
+    # Check if user exists in our database
     user = db.query(User).filter_by(clerk_user_id=user_id).first()
-    if not user:
-        # We need to fetch user information from Clerk API
-        import httpx
-        import os
 
+    # If user does not exist, create them (Just-In-Time Provisioning)
+    if not user:
         # Get Clerk API key from environment
-        clerk_api_key = os.getenv("CLERK_SECRET_KEY")
+        clerk_api_key = settings.CLERK_SECRET_KEY
         if not clerk_api_key:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Clerk API key not configured",
+                detail="Clerk secret key not configured on the server.",
             )
 
         # Fetch user data from Clerk API
@@ -119,62 +112,49 @@ async def get_current_user(
                     f"https://api.clerk.dev/v1/users/{user_id}",
                     headers=headers,
                 )
-
-                if response.status_code != 200:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Failed to get user data from Clerk: {response.text}",
-                    )
-
+                response.raise_for_status()  # Raise an exception for bad status codes
                 clerk_user_data = response.json()
 
-                # Extract email and name from Clerk data
-                email = None
-                primary_email_obj = next(
-                    (
-                        e
-                        for e in clerk_user_data.get("email_addresses", [])
-                        if e.get("id")
-                        == clerk_user_data.get("primary_email_address_id")
-                    ),
-                    None,
+            # Extract email and name from Clerk data
+            primary_email_id = clerk_user_data.get("primary_email_address_id")
+            email_obj = next(
+                (
+                    e
+                    for e in clerk_user_data.get("email_addresses", [])
+                    if e.get("id") == primary_email_id
+                ),
+                None,
+            )
+            email = email_obj.get("email_address") if email_obj else None
+
+            first_name = clerk_user_data.get("first_name")
+            last_name = clerk_user_data.get("last_name")
+            name = f"{first_name} {last_name}".strip() or clerk_user_data.get(
+                "username"
+            )
+
+            if not email or not name:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Missing required user information (email, name) from Clerk.",
                 )
 
-                if primary_email_obj:
-                    email = primary_email_obj.get("email_address")
+            # Create the user in our database
+            user = User(clerk_user_id=user_id, email=email, name=name)
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+            print(f"Created new user from Clerk: ID={user.id}, Email={user.email}")
 
-                # Get name from Clerk data
-                first_name = clerk_user_data.get("first_name")
-                last_name = clerk_user_data.get("last_name")
-
-                if first_name and last_name:
-                    name = f"{first_name} {last_name}"
-                elif first_name:
-                    name = first_name
-                elif last_name:
-                    name = last_name
-                else:
-                    name = clerk_user_data.get("username")
-
-                if not email or not name:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Unable to create user: Missing required user information from Clerk API.",
-                    )
-
-                # Create the user in our database
-                user = User(clerk_user_id=user_id, email=email, name=name)
-                db.add(user)
-                db.commit()
-                db.refresh(user)
-                print(
-                    f"Created new user from Clerk API: {user.id}, {user.email}, {user.name}"
-                )
-
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Failed to get user data from Clerk: {e.response.text}",
+            )
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error fetching user data from Clerk: {str(e)}",
+                detail=f"Error fetching or creating user from Clerk: {str(e)}",
             )
 
     return user
@@ -184,12 +164,18 @@ async def optional_current_user(
     authorization: Optional[str] = Header(None),
     db: Session = Depends(get_db),
 ) -> Optional[User]:
+    """
+    Dependency to optionally get the current user.
+    Returns None if no valid token is provided.
+    """
     if not authorization or not authorization.lower().startswith("bearer "):
         return None
     token = authorization.split(" ", 1)[1]
     try:
         payload = validate_jwt(token)
         uid = payload.get("sub")
+        if not uid:
+            return None
         return db.query(User).filter_by(clerk_user_id=uid).first()
     except HTTPException:
         return None

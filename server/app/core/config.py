@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     CLERK_AUDIENCE: Optional[str] = None
     CLERK_SECRET_KEY: Optional[str] = None
 
+    # Gemini API
+    GEMINI_API_KEY: Optional[str] = None
+
     model_config = {
         "case_sensitive": True,
         "env_file": ".env",
