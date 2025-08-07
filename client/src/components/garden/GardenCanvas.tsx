@@ -99,15 +99,31 @@ export function GardenCanvas({
     [gridSize]
   );
 
+  const clamp = (value: number, min: number, max: number) =>
+    Math.min(Math.max(value, min), max);
+
+  const MIN_VIEWBOX_SIZE = 200;
+  const MAX_VIEWBOX_SIZE = 5000;
+
   const handleZoom = useCallback(
     (factor: number) => {
-      const newWidth = viewBox.width * factor;
-      const newHeight = viewBox.height * factor;
+      const clampedWidth = clamp(
+        viewBox.width * factor,
+        MIN_VIEWBOX_SIZE,
+        MAX_VIEWBOX_SIZE
+      );
+      const scale = clampedWidth / viewBox.width;
+      const newHeight = viewBox.height * scale;
       const centerX = viewBox.x + viewBox.width / 2;
       const centerY = viewBox.y + viewBox.height / 2;
-      const newX = centerX - newWidth / 2;
+      const newX = centerX - clampedWidth / 2;
       const newY = centerY - newHeight / 2;
-      onViewBoxChange({ x: newX, y: newY, width: newWidth, height: newHeight });
+      onViewBoxChange({
+        x: newX,
+        y: newY,
+        width: clampedWidth,
+        height: newHeight,
+      });
     },
     [viewBox, onViewBoxChange]
   );
@@ -286,12 +302,22 @@ export function GardenCanvas({
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
       const zoomFactor = e.deltaY > 0 ? 1.1 : 0.9;
-      const newWidth = viewBox.width * zoomFactor;
-      const newHeight = viewBox.height * zoomFactor;
+      const clampedWidth = clamp(
+        viewBox.width * zoomFactor,
+        MIN_VIEWBOX_SIZE,
+        MAX_VIEWBOX_SIZE
+      );
+      const scale = clampedWidth / viewBox.width;
+      const newHeight = viewBox.height * scale;
       const mousePos = screenToSVG(e.clientX, e.clientY);
-      const newX = mousePos.x - (mousePos.x - viewBox.x) * zoomFactor;
-      const newY = mousePos.y - (mousePos.y - viewBox.y) * zoomFactor;
-      onViewBoxChange({ x: newX, y: newY, width: newWidth, height: newHeight });
+      const newX = mousePos.x - (mousePos.x - viewBox.x) * scale;
+      const newY = mousePos.y - (mousePos.y - viewBox.y) * scale;
+      onViewBoxChange({
+        x: newX,
+        y: newY,
+        width: clampedWidth,
+        height: newHeight,
+      });
     };
 
     svgElement.addEventListener("wheel", handleWheel, { passive: false });
