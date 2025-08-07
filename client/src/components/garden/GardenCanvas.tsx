@@ -109,29 +109,28 @@ export function GardenCanvas({
     [viewBox, onViewBoxChange]
   );
 
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      interactionState.current.didMove = false;
-      const startPos = screenToSVG(e.clientX, e.clientY);
+    const handleMouseDown = useCallback(
+      (e: React.MouseEvent) => {
+        interactionState.current.didMove = false;
+        const startPos = screenToSVG(e.clientX, e.clientY);
 
-      if (e.button === 1 || e.metaKey || e.ctrlKey) {
-        interactionState.current.isPanning = true;
-        interactionState.current.panStart = { x: e.clientX, y: e.clientY };
-        if (svgRef.current) svgRef.current.style.cursor = "grabbing";
-        e.preventDefault();
-        return;
-      }
+        if (e.button === 1 || e.metaKey || e.ctrlKey) {
+          interactionState.current.isPanning = true;
+          interactionState.current.panStart = { x: e.clientX, y: e.clientY };
+          if (svgRef.current) svgRef.current.style.cursor = "grabbing";
+          e.preventDefault();
+          return;
+        }
 
-      if (e.button !== 0) return;
+        if (e.button !== 0) return;
 
-      const target = e.target as SVGElement;
-      const elementId = target
-        .closest("[data-element-id]")
-        ?.getAttribute("data-element-id");
+        const target = e.target as SVGElement;
+        const elementId = target
+          .closest("[data-element-id]")
+          ?.getAttribute("data-element-id");
 
-      if (activeTool === "select") {
         if (elementId) {
-          const element = elements.find(el => el.id === elementId);
+          const element = elements.find((el) => el.id === elementId);
           if (element) {
             onHistorySnapshot();
             interactionState.current.isDragging = true;
@@ -144,23 +143,31 @@ export function GardenCanvas({
             e.preventDefault();
             return;
           }
-        } else {
+        }
+
+        if (activeTool === "select") {
           interactionState.current.isPanning = true;
           interactionState.current.panStart = { x: e.clientX, y: e.clientY };
           if (svgRef.current) svgRef.current.style.cursor = "grabbing";
           e.preventDefault();
           return;
         }
-      }
 
-      if (activeTool === "structure") {
-        interactionState.current.isDrawing = true;
-        interactionState.current.drawStart = snapToGrid(startPos);
-        e.preventDefault();
-      }
-    },
-    [activeTool, screenToSVG, snapToGrid, elements, onSelectionChange]
-  );
+        if (activeTool === "structure") {
+          interactionState.current.isDrawing = true;
+          interactionState.current.drawStart = snapToGrid(startPos);
+          e.preventDefault();
+        }
+      },
+      [
+        activeTool,
+        screenToSVG,
+        snapToGrid,
+        elements,
+        onSelectionChange,
+        onHistorySnapshot,
+      ]
+    );
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
