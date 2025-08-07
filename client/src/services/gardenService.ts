@@ -1,10 +1,11 @@
 import { API_BASE_URL } from '../config';
 import { 
-  SavedGarden, 
-  GardenSummary, 
-  CanvasElement, 
+  SavedGarden,
+  GardenSummary,
+  CanvasElement,
   CanvasState,
-  SavedGardenElement 
+  SavedGardenElement,
+  Plant
 } from '../types/garden';
 
 class GardenService {
@@ -161,6 +162,7 @@ class GardenService {
         height: element.size.height,
         label: element.label,
         color: element.color,
+        shape: element.shape,
       };
     } else if (element.type === 'plant') {
       return {
@@ -205,6 +207,7 @@ class GardenService {
         },
         label: saved.label || '',
         color: saved.color || '#8B4513',
+        shape: (saved.shape as 'rectangle' | 'ellipse') || 'rectangle',
       };
     } else if (saved.element_type === 'plant') {
       return {
@@ -213,7 +216,7 @@ class GardenService {
         plant: {
           commonName: saved.common_name || '',
           botanicalName: saved.botanical_name || '',
-          plantType: (saved.plant_type as any) || 'Vegetables',
+          plantType: (saved.plant_type as Plant['plantType']) || 'Vegetables',
           sunlightNeeds: saved.sunlight_needs || '',
           waterNeeds: saved.water_needs || '',
           matureSize: saved.mature_size || '',
@@ -238,6 +241,7 @@ class GardenService {
       size: { width: 100, height: 100 },
       label: 'Unknown',
       color: '#8B4513',
+      shape: 'rectangle',
     };
   }
 

@@ -43,6 +43,15 @@ export function PropertiesPanel({
     }
   };
 
+  const handleShapeChange = (newShape: 'rectangle' | 'ellipse') => {
+    if (selectedElement.type === 'structure') {
+      onElementUpdate({
+        ...selectedElement,
+        shape: newShape
+      });
+    }
+  };
+
   const materialPresets = [
     { name: 'Wood Deck', label: 'wood deck', color: '#8b4513' },
     { name: 'Wood Fence', label: 'wood fence', color: '#a0522d' },
@@ -114,7 +123,21 @@ export function PropertiesPanel({
               {Math.round(structureElement.size.width)} ft × {Math.round(structureElement.size.height)} ft
             </div>
           </div>
-          
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Shape</label>
+            <select
+              className="w-full p-2 border rounded-md bg-white"
+              value={structureElement.shape}
+              onChange={(e) =>
+                handleShapeChange(e.target.value as 'rectangle' | 'ellipse')
+              }
+            >
+              <option value="rectangle">Rectangle</option>
+              <option value="ellipse">Ellipse</option>
+            </select>
+          </div>
+
           <div>
             <label className="block text-sm font-medium mb-1">Color</label>
             <div className="flex items-center gap-2">
