@@ -1,7 +1,6 @@
-import React from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { CanvasElement, Structure, PlantInstance } from '../../types/garden';
+import { CanvasElement, Structure, PlantInstance, StructureShape } from '../../types/garden';
 
 interface PropertiesPanelProps {
   selectedElement: CanvasElement | null;
@@ -43,7 +42,7 @@ export function PropertiesPanel({
     }
   };
 
-  const handleShapeChange = (newShape: 'rectangle' | 'ellipse') => {
+  const handleShapeChange = (newShape: StructureShape) => {
     if (selectedElement.type === 'structure') {
       onElementUpdate({
         ...selectedElement,
@@ -130,7 +129,7 @@ export function PropertiesPanel({
               className="w-full p-2 border rounded-md bg-white"
               value={structureElement.shape}
               onChange={(e) =>
-                handleShapeChange(e.target.value as 'rectangle' | 'ellipse')
+                handleShapeChange(e.target.value as StructureShape)
               }
             >
               <option value="rectangle">Rectangle</option>

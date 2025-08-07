@@ -1,11 +1,13 @@
 import { API_BASE_URL } from '../config';
-import { 
+import {
   SavedGarden,
   GardenSummary,
   CanvasElement,
   CanvasState,
   SavedGardenElement,
-  Plant
+  Plant,
+  GardenNote,
+  StructureShape
 } from '../types/garden';
 
 class GardenService {
@@ -104,6 +106,32 @@ class GardenService {
     if (!response.ok) {
       throw new Error('Failed to delete garden');
     }
+  }
+
+  async listNotes(gardenId: number): Promise<GardenNote[]> {
+    const response = await fetch(`${API_BASE_URL}/api/v1/garden/gardens/${gardenId}/notes`, {
+      headers: await this.getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch notes');
+    }
+
+    return response.json();
+  }
+
+  async addNote(gardenId: number, content: string): Promise<GardenNote> {
+    const response = await fetch(`${API_BASE_URL}/api/v1/garden/gardens/${gardenId}/notes`, {
+      method: 'POST',
+      headers: await this.getAuthHeaders(),
+      body: JSON.stringify({ content }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to add note');
+    }
+
+    return response.json();
   }
 
   async saveGardenSnapshot(
@@ -207,7 +235,7 @@ class GardenService {
         },
         label: saved.label || '',
         color: saved.color || '#8B4513',
-        shape: (saved.shape as 'rectangle' | 'ellipse') || 'rectangle',
+        shape: (saved.shape as StructureShape) || 'rectangle',
       };
     } else if (saved.element_type === 'plant') {
       return {

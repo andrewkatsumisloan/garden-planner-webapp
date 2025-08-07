@@ -36,12 +36,14 @@ export interface CanvasObject {
   type: 'structure' | 'plant' | 'text';
 }
 
+export type StructureShape = 'rectangle' | 'ellipse';
+
 export interface Structure extends CanvasObject {
   type: 'structure';
   size: Size;
   label: string;
   color: string;
-  shape: 'rectangle' | 'ellipse';
+  shape: StructureShape;
 }
 
 export interface PlantInstance extends CanvasObject {
@@ -73,6 +75,13 @@ export interface CanvasState {
 }
 
 export type Tool = 'select' | 'structure' | 'text';
+
+export interface GardenNote {
+  id: number;
+  garden_id: number;
+  content: string;
+  created_at: string;
+}
 
 // Garden persistence types
 export interface SavedGarden {
@@ -132,11 +141,13 @@ export interface GardenSummary {
 export interface AppState {
   canvas: CanvasState;
   activeTool: Tool;
+  structureShape: StructureShape;
   plantRecommendations: PlantRecommendations | null;
   userZipCode: string | null;
   isLoadingRecommendations: boolean;
-  sidePanel: 'recommendations' | 'properties' | 'gardens';
+  sidePanel: 'recommendations' | 'properties' | 'gardens' | 'notes';
   currentGarden: SavedGarden | null;
+  notes: GardenNote[];
   isSaving: boolean;
   lastSaved: Date | null;
   isLoadingGardens: boolean;

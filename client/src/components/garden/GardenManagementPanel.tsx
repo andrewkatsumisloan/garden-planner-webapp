@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Calendar, MapPin, Layers, Trash2, Edit3 } from 'lucide-react';
+import { Plus, Calendar, MapPin, Layers, Trash2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { GardenSummary } from '../../types/garden';

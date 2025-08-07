@@ -6,6 +6,7 @@ import { Toolbar } from "./Toolbar";
 import { RecommendationsPanel } from "./RecommendationsPanel";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { GardenManagementPanel } from "./GardenManagementPanel";
+import { GardenNotesPanel } from "./GardenNotesPanel";
 import {
   AppState,
   CanvasElement,
@@ -13,6 +14,7 @@ import {
   PlantInstance,
   Tool,
   Position,
+  StructureShape,
 } from "../../types/garden";
 import { API_BASE_URL } from "../../config";
 import { gardenService } from "../../services/gardenService";
@@ -28,11 +30,13 @@ const initialCanvasState = {
 const initialAppState: AppState = {
   canvas: initialCanvasState,
   activeTool: "select",
+  structureShape: "rectangle",
   plantRecommendations: null,
   userZipCode: null,
   isLoadingRecommendations: false,
   sidePanel: "recommendations",
   currentGarden: null,
+  notes: [],
   isSaving: false,
   lastSaved: null,
   isLoadingGardens: false,
@@ -110,6 +114,7 @@ export function GardenPlanner() {
           ...prev,
           currentGarden: garden,
           userZipCode: zipCode,
+          notes: [],
         }));
 
         return garden;
@@ -243,12 +248,14 @@ export function GardenPlanner() {
       try {
         const garden = await gardenService.getGarden(gardenId);
         const canvasState = gardenService.savedGardenToCanvasState(garden);
+        const notes = await gardenService.listNotes(gardenId);
 
         setAppState((prev) => ({
           ...prev,
           currentGarden: garden,
           userZipCode: garden.zip_code,
           canvas: canvasState,
+          notes,
           sidePanel: "recommendations",
           plantRecommendations: null, // Clear previous recommendations
         }));
@@ -313,6 +320,7 @@ export function GardenPlanner() {
           userZipCode: zipCode,
           canvas: initialCanvasState,
           sidePanel: "recommendations",
+          notes: [],
         }));
 
         // Refresh the gardens list
@@ -359,6 +367,19 @@ export function GardenPlanner() {
       }
     },
     [appState.currentGarden?.id, loadAvailableGardens]
+  );
+
+  const handleAddNote = useCallback(
+    async (content: string) => {
+      if (!appState.currentGarden) return;
+      try {
+        const note = await gardenService.addNote(appState.currentGarden.id, content);
+        setAppState((prev) => ({ ...prev, notes: [...prev.notes, note] }));
+      } catch (error) {
+        console.error('Failed to add note:', error);
+      }
+    },
+    [appState.currentGarden]
   );
 
   // Show gardens panel
@@ -409,6 +430,14 @@ export function GardenPlanner() {
 
   const handleToolChange = useCallback((tool: Tool) => {
     setAppState((prev) => ({ ...prev, activeTool: tool }));
+  }, []);
+
+  const handleStructureShapeChange = useCallback((shape: StructureShape) => {
+    setAppState((prev) => ({ ...prev, structureShape: shape }));
+  }, []);
+
+  const handleShowNotes = useCallback(() => {
+    setAppState((prev) => ({ ...prev, sidePanel: 'notes' }));
   }, []);
 
   const handleElementAdd = useCallback(
@@ -621,10 +650,13 @@ export function GardenPlanner() {
       <Toolbar
         activeTool={appState.activeTool}
         onToolChange={handleToolChange}
+        structureShape={appState.structureShape}
+        onStructureShapeChange={handleStructureShapeChange}
         isSaving={appState.isSaving}
         lastSaved={appState.lastSaved}
         gardenName={appState.currentGarden?.name}
         onShowGardens={handleShowGardens}
+        onShowNotes={handleShowNotes}
       />
 
       <div className="flex-1 flex overflow-hidden">
@@ -632,6 +664,7 @@ export function GardenPlanner() {
           <GardenCanvas
             canvasState={appState.canvas}
             activeTool={appState.activeTool}
+            structureShape={appState.structureShape}
             selectedElementId={appState.canvas.selectedElementId}
             onSelectionChange={handleSelectionChange}
             onViewBoxChange={handleViewBoxChange}
@@ -656,6 +689,8 @@ export function GardenPlanner() {
               onElementUpdate={handleElementUpdate}
               onElementDelete={handleElementDelete}
             />
+          ) : appState.sidePanel === "notes" ? (
+            <GardenNotesPanel notes={appState.notes} onAddNote={handleAddNote} />
           ) : (
             <GardenManagementPanel
               availableGardens={appState.availableGardens}
