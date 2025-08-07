@@ -94,6 +94,7 @@ class Garden(GardenBase):
     created_at: datetime
     updated_at: Optional[datetime] = None
     elements: List[GardenElement] = []
+    notes: List["GardenNote"] = []
     
     class Config:
         from_attributes = True
@@ -107,6 +108,23 @@ class GardenSummary(BaseModel):
     updated_at: Optional[datetime] = None
     element_count: int
     
+    class Config:
+        from_attributes = True
+
+# Garden Note Schemas
+class GardenNoteBase(BaseModel):
+    content: str
+
+
+class GardenNoteCreate(GardenNoteBase):
+    pass
+
+
+class GardenNote(GardenNoteBase):
+    id: int
+    garden_id: int
+    created_at: datetime
+
     class Config:
         from_attributes = True
 
