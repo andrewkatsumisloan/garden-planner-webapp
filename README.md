@@ -1,3 +1,3 @@
-Fullstack Starter Template for React / Vite + FastAPI + Postgres Application
+React / Vite + FastAPI + Postgres Application
 
-Use of Clerk for authentication, Tailwind + ShadCN for styling
+Figma-like garden planning web-app
