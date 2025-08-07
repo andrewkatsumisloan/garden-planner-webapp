@@ -1,5 +1,5 @@
 // ===== File: client/src/components/garden/GardenPlanner.tsx =====
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useUser, useAuth } from "@clerk/clerk-react";
 import { GardenCanvas } from "./GardenCanvas";
 import { Toolbar } from "./Toolbar";
@@ -9,6 +9,7 @@ import { GardenManagementPanel } from "./GardenManagementPanel";
 import {
   AppState,
   CanvasElement,
+  CanvasState,
   PlantInstance,
   Tool,
   Position,
@@ -42,6 +43,18 @@ export function GardenPlanner() {
   const { user } = useUser();
   const { getToken } = useAuth();
   const [appState, setAppState] = useState<AppState>(initialAppState);
+
+  const undoStack = useRef<CanvasState[]>([]);
+  const redoStack = useRef<CanvasState[]>([]);
+  const clipboard = useRef<CanvasElement | null>(null);
+
+  const pushHistory = useCallback((canvas: CanvasState) => {
+    undoStack.current.push(JSON.parse(JSON.stringify(canvas)));
+    if (undoStack.current.length > 100) {
+      undoStack.current.shift();
+    }
+    redoStack.current = [];
+  }, []);
 
   // Set up garden service with token callback
   useEffect(() => {
@@ -398,15 +411,21 @@ export function GardenPlanner() {
     setAppState((prev) => ({ ...prev, activeTool: tool }));
   }, []);
 
-  const handleElementAdd = useCallback((element: CanvasElement) => {
-    setAppState((prev) => ({
-      ...prev,
-      canvas: {
-        ...prev.canvas,
-        elements: [...prev.canvas.elements, element],
-      },
-    }));
-  }, []);
+  const handleElementAdd = useCallback(
+    (element: CanvasElement) => {
+      setAppState((prev) => {
+        pushHistory(prev.canvas);
+        return {
+          ...prev,
+          canvas: {
+            ...prev.canvas,
+            elements: [...prev.canvas.elements, element],
+          },
+        };
+      });
+    },
+    [pushHistory]
+  );
 
   const handleElementUpdate = useCallback((updatedElement: CanvasElement) => {
     setAppState((prev) => ({
@@ -438,19 +457,134 @@ export function GardenPlanner() {
     []
   );
 
-  const handleElementDelete = useCallback((elementId: string) => {
-    setAppState((prev) => ({
-      ...prev,
-      canvas: {
-        ...prev.canvas,
-        elements: prev.canvas.elements.filter(
-          (element) => element.id !== elementId
-        ),
-        selectedElementId: null,
-      },
-      sidePanel: "recommendations",
-    }));
+  const handleElementDelete = useCallback(
+    (elementId: string) => {
+      setAppState((prev) => {
+        pushHistory(prev.canvas);
+        return {
+          ...prev,
+          canvas: {
+            ...prev.canvas,
+            elements: prev.canvas.elements.filter(
+              (element) => element.id !== elementId
+            ),
+            selectedElementId: null,
+          },
+          sidePanel: "recommendations",
+        };
+      });
+    },
+    [pushHistory]
+  );
+
+  const handleUndo = useCallback(() => {
+    setAppState((prev) => {
+      if (undoStack.current.length === 0) return prev;
+      const previous = undoStack.current.pop()!;
+      redoStack.current.push(JSON.parse(JSON.stringify(prev.canvas)));
+      return { ...prev, canvas: previous };
+    });
   }, []);
+
+  const handleRedo = useCallback(() => {
+    setAppState((prev) => {
+      if (redoStack.current.length === 0) return prev;
+      const next = redoStack.current.pop()!;
+      undoStack.current.push(JSON.parse(JSON.stringify(prev.canvas)));
+      return { ...prev, canvas: next };
+    });
+  }, []);
+
+  const handleHistorySnapshot = useCallback(() => {
+    pushHistory(appState.canvas);
+  }, [pushHistory, appState.canvas]);
+
+  useEffect(() => {
+    const handleShortcuts = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) {
+          handleRedo();
+        } else {
+          handleUndo();
+        }
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        handleRedo();
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c") {
+        e.preventDefault();
+        const selected = appState.canvas.elements.find(
+          (el) => el.id === appState.canvas.selectedElementId
+        );
+        if (selected) {
+          clipboard.current = JSON.parse(JSON.stringify(selected));
+        }
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "x") {
+        e.preventDefault();
+        const selected = appState.canvas.elements.find(
+          (el) => el.id === appState.canvas.selectedElementId
+        );
+        if (selected) {
+          clipboard.current = JSON.parse(JSON.stringify(selected));
+          handleElementDelete(selected.id);
+        }
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "v") {
+        e.preventDefault();
+        if (clipboard.current) {
+          const newElement = {
+            ...JSON.parse(JSON.stringify(clipboard.current)),
+            id: `${clipboard.current.type}_${Date.now()}`,
+            position: {
+              x: clipboard.current.position.x + appState.canvas.gridSize,
+              y: clipboard.current.position.y + appState.canvas.gridSize,
+            },
+          } as CanvasElement;
+          handleElementAdd(newElement);
+          handleSelectionChange(newElement.id);
+        }
+        return;
+      }
+
+      if (
+        (e.key === "Backspace" || e.key === "Delete") &&
+        appState.canvas.selectedElementId
+      ) {
+        e.preventDefault();
+        handleElementDelete(appState.canvas.selectedElementId);
+      }
+    };
+
+    window.addEventListener("keydown", handleShortcuts);
+    return () => window.removeEventListener("keydown", handleShortcuts);
+  }, [
+    appState.canvas.elements,
+    appState.canvas.gridSize,
+    appState.canvas.selectedElementId,
+    handleElementAdd,
+    handleElementDelete,
+    handleSelectionChange,
+    handleUndo,
+    handleRedo,
+  ]);
 
   const handleCanvasDrop = useCallback(
     (e: React.DragEvent, position: Position) => {
@@ -504,6 +638,7 @@ export function GardenPlanner() {
             onElementAdd={handleElementAdd}
             onElementUpdate={handleElementUpdate}
             onCanvasDrop={handleCanvasDrop}
+            onHistorySnapshot={handleHistorySnapshot}
           />
         </div>
 

@@ -1,5 +1,6 @@
 // ===== File: client/src/components/garden/GardenCanvas.tsx =====
 import React, { useRef, useState, useCallback, useEffect } from "react";
+import { Plus, Minus } from "lucide-react";
 import {
   CanvasState,
   CanvasElement,
@@ -18,6 +19,7 @@ interface GardenCanvasProps {
   onElementAdd: (element: CanvasElement) => void;
   onElementUpdate: (element: CanvasElement) => void;
   onCanvasDrop: (e: React.DragEvent, position: Position) => void;
+  onHistorySnapshot: () => void;
 }
 
 export function GardenCanvas({
@@ -29,6 +31,7 @@ export function GardenCanvas({
   onElementAdd,
   onElementUpdate,
   onCanvasDrop,
+  onHistorySnapshot,
 }: GardenCanvasProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const interactionState = useRef({
@@ -93,6 +96,19 @@ export function GardenCanvas({
     [gridSize]
   );
 
+  const handleZoom = useCallback(
+    (factor: number) => {
+      const newWidth = viewBox.width * factor;
+      const newHeight = viewBox.height * factor;
+      const centerX = viewBox.x + viewBox.width / 2;
+      const centerY = viewBox.y + viewBox.height / 2;
+      const newX = centerX - newWidth / 2;
+      const newY = centerY - newHeight / 2;
+      onViewBoxChange({ x: newX, y: newY, width: newWidth, height: newHeight });
+    },
+    [viewBox, onViewBoxChange]
+  );
+
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
       interactionState.current.didMove = false;
@@ -117,6 +133,7 @@ export function GardenCanvas({
         if (elementId) {
           const element = elements.find(el => el.id === elementId);
           if (element) {
+            onHistorySnapshot();
             interactionState.current.isDragging = true;
             interactionState.current.dragElementId = elementId;
             interactionState.current.dragOffset = {
@@ -270,7 +287,7 @@ export function GardenCanvas({
   }, [onViewBoxChange, screenToSVG, viewBox]);
 
   return (
-    <div className="w-full h-full bg-gray-50 overflow-hidden">
+    <div className="relative w-full h-full bg-gray-50 overflow-hidden">
       <svg
         ref={svgRef}
         className="w-full h-full"
@@ -522,6 +539,21 @@ export function GardenCanvas({
           />
         )}
       </svg>
+
+      <div className="absolute bottom-4 right-4 flex flex-col space-y-2">
+        <button
+          className="w-8 h-8 rounded-full bg-white shadow flex items-center justify-center"
+          onClick={() => handleZoom(0.9)}
+        >
+          <Plus className="w-4 h-4" />
+        </button>
+        <button
+          className="w-8 h-8 rounded-full bg-white shadow flex items-center justify-center"
+          onClick={() => handleZoom(1.1)}
+        >
+          <Minus className="w-4 h-4" />
+        </button>
+      </div>
     </div>
   );
 }
