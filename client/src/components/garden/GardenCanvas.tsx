@@ -8,11 +8,13 @@ import {
   Tool,
   Structure,
   PlantInstance,
+  StructureShape,
 } from "../../types/garden";
 
 interface GardenCanvasProps {
   canvasState: CanvasState;
   activeTool: Tool;
+  structureShape: StructureShape;
   selectedElementId: string | null;
   onSelectionChange: (elementId: string | null) => void;
   onViewBoxChange: (viewBox: CanvasState["viewBox"]) => void;
@@ -25,6 +27,7 @@ interface GardenCanvasProps {
 export function GardenCanvas({
   canvasState,
   activeTool,
+  structureShape,
   selectedElementId,
   onSelectionChange,
   onViewBoxChange,
@@ -241,7 +244,7 @@ export function GardenCanvas({
             size: { width, height },
             label: "New Structure",
             color: "#8b4513",
-            shape: "rectangle",
+            shape: structureShape,
           };
           onElementAdd(newStructure);
           onSelectionChange(newStructure.id);
@@ -262,6 +265,7 @@ export function GardenCanvas({
       onSelectionChange,
       screenToSVG,
       snapToGrid,
+      structureShape,
     ]
   );
 

@@ -1,24 +1,29 @@
-import React from 'react';
-import { MousePointer, Square, Type, Save, Clock, FolderOpen } from 'lucide-react';
+import { MousePointer, Square, Type, Save, Clock, FolderOpen, StickyNote } from 'lucide-react';
 import { Button } from '../ui/button';
-import { Tool } from '../../types/garden';
+import { Tool, StructureShape } from '../../types/garden';
 
 interface ToolbarProps {
   activeTool: Tool;
   onToolChange: (tool: Tool) => void;
+  structureShape: StructureShape;
+  onStructureShapeChange: (shape: StructureShape) => void;
   isSaving?: boolean;
   lastSaved?: Date | null;
   gardenName?: string;
   onShowGardens?: () => void;
+  onShowNotes?: () => void;
 }
 
-export function Toolbar({ 
-  activeTool, 
-  onToolChange, 
-  isSaving = false, 
-  lastSaved, 
+export function Toolbar({
+  activeTool,
+  onToolChange,
+  structureShape,
+  onStructureShapeChange,
+  isSaving = false,
+  lastSaved,
   gardenName,
-  onShowGardens
+  onShowGardens,
+  onShowNotes,
 }: ToolbarProps) {
   return (
     <div className="flex items-center gap-2 p-4 bg-white border-b border-gray-200">
@@ -42,6 +47,17 @@ export function Toolbar({
           <Square className="h-4 w-4" />
           Structure (R)
         </Button>
+
+        {activeTool === 'structure' && (
+          <select
+            className="ml-2 border rounded p-1 text-sm"
+            value={structureShape}
+            onChange={(e) => onStructureShapeChange(e.target.value as StructureShape)}
+          >
+            <option value="rectangle">Rectangle</option>
+            <option value="ellipse">Ellipse</option>
+          </select>
+        )}
         
         <Button
           variant={activeTool === 'text' ? 'default' : 'outline'}
@@ -63,6 +79,15 @@ export function Toolbar({
         >
           <FolderOpen className="h-4 w-4" />
           Gardens
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onShowNotes}
+          className="flex items-center gap-2"
+        >
+          <StickyNote className="h-4 w-4" />
+          Notes
         </Button>
       </div>
       

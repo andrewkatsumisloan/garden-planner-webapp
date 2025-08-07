@@ -157,7 +157,7 @@ export function RecommendationsPanel({
 
               {isExpanded && (
                 <div className="p-2 space-y-1 max-h-60 overflow-y-auto">
-                  {plants.map((plant, index) => (
+                  {plants.map((plant: Plant, index: number) => (
                     <div
                       key={`${plant.commonName}_${index}`}
                       draggable
