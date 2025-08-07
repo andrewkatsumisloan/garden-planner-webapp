@@ -109,7 +109,7 @@ export function GardenPlanner() {
   );
 
   const fetchPlantRecommendations = useCallback(
-    async (zipCode: string) => {
+    async (zipCode: string, skipGardenCheck = false) => {
       if (!user) return;
 
       setAppState((prev) => ({
@@ -125,11 +125,31 @@ export function GardenPlanner() {
       }
 
       try {
-        // Create garden first if we don't have one
-        if (!appState.currentGarden) {
-          const garden = await createInitialGarden(zipCode);
-          if (!garden) {
-            throw new Error("Failed to create garden");
+        // Check if we need to create or switch to a garden for this zip code (unless we're being called from handleLoadGarden)
+        if (!skipGardenCheck && (!appState.currentGarden || appState.currentGarden.zip_code !== zipCode)) {
+          // First, check if we already have a garden for this zip code
+          const existingGarden = appState.availableGardens.find(g => g.zip_code === zipCode);
+          
+          if (existingGarden) {
+            // Load the existing garden and get recommendations
+            const garden = await gardenService.getGarden(existingGarden.id);
+            const canvasState = gardenService.savedGardenToCanvasState(garden);
+
+            setAppState((prev) => ({
+              ...prev,
+              currentGarden: garden,
+              userZipCode: garden.zip_code,
+              canvas: canvasState,
+              sidePanel: "recommendations",
+            }));
+            
+            // Continue to fetch recommendations below
+          } else {
+            // Create a new garden for this zip code
+            const garden = await createInitialGarden(zipCode);
+            if (!garden) {
+              throw new Error("Failed to create garden");
+            }
           }
         }
 
@@ -167,7 +187,7 @@ export function GardenPlanner() {
         }));
       }
     },
-    [user, getToken, appState.currentGarden, createInitialGarden]
+    [user, getToken, appState.currentGarden, appState.availableGardens, createInitialGarden]
   );
 
   // Load available gardens
@@ -222,7 +242,7 @@ export function GardenPlanner() {
 
         // Get plant recommendations for this garden's zip code
         if (garden.zip_code) {
-          await fetchPlantRecommendations(garden.zip_code);
+          await fetchPlantRecommendations(garden.zip_code, true);
         }
       } catch (error) {
         console.error("Failed to load garden:", error);

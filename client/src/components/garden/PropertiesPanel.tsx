@@ -43,6 +43,27 @@ export function PropertiesPanel({
     }
   };
 
+  const materialPresets = [
+    { name: 'Wood Deck', label: 'wood deck', color: '#8b4513' },
+    { name: 'Wood Fence', label: 'wood fence', color: '#a0522d' },
+    { name: 'Concrete Patio', label: 'concrete patio', color: '#d3d3d3' },
+    { name: 'Metal Gate', label: 'metal gate', color: '#909090' },
+    { name: 'Raised Bed', label: 'raised bed', color: '#2d5a27' },
+    { name: 'Wood Shed', label: 'wood shed', color: '#654321' },
+    { name: 'Concrete Wall', label: 'concrete wall', color: '#c0c0c0' },
+    { name: 'Custom', label: '', color: '' }
+  ];
+
+  const handleMaterialChange = (material: typeof materialPresets[0]) => {
+    if (selectedElement.type === 'structure' && material.name !== 'Custom') {
+      onElementUpdate({
+        ...selectedElement,
+        label: material.label,
+        color: material.color
+      });
+    }
+  };
+
   const handleDelete = () => {
     onElementDelete(selectedElement.id);
   };
@@ -55,12 +76,36 @@ export function PropertiesPanel({
         
         <div className="space-y-4">
           <div>
+            <label className="block text-sm font-medium mb-1">Material Preset</label>
+            <select
+              className="w-full p-2 border rounded-md bg-white"
+              onChange={(e) => {
+                const material = materialPresets.find(m => m.name === e.target.value);
+                if (material) handleMaterialChange(material);
+              }}
+              value="Custom"
+            >
+              {materialPresets.map((material) => (
+                <option key={material.name} value={material.name}>
+                  {material.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              Choose a preset or use Custom for manual settings
+            </p>
+          </div>
+          
+          <div>
             <label className="block text-sm font-medium mb-1">Label</label>
             <Input
               value={structureElement.label}
               onChange={(e) => handleLabelChange(e.target.value)}
               placeholder="Structure name"
             />
+            <p className="text-xs text-gray-500 mt-1">
+              Include material keywords (wood, concrete, metal) for automatic textures
+            </p>
           </div>
           
           <div>

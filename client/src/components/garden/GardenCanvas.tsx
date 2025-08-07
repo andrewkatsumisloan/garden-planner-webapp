@@ -48,6 +48,28 @@ export function GardenCanvas({
 
   const { viewBox, gridSize, elements } = canvasState;
 
+  const getStructureMaterial = useCallback((label: string, color: string) => {
+    const lowerLabel = label.toLowerCase();
+    
+    // Determine material based on label keywords
+    if (lowerLabel.includes('wood') || lowerLabel.includes('deck') || lowerLabel.includes('fence') || 
+        lowerLabel.includes('pergola') || lowerLabel.includes('shed')) {
+      return { fill: 'url(#woodTexture)', textColor: '#ffffff', shadow: true };
+    } else if (lowerLabel.includes('concrete') || lowerLabel.includes('patio') || lowerLabel.includes('foundation') || 
+               lowerLabel.includes('wall') || lowerLabel.includes('path')) {
+      return { fill: 'url(#concreteTexture)', textColor: '#333333', shadow: true };
+    } else if (lowerLabel.includes('metal') || lowerLabel.includes('steel') || lowerLabel.includes('aluminum') || 
+               lowerLabel.includes('gate') || lowerLabel.includes('trellis')) {
+      return { fill: 'url(#metalTexture)', textColor: '#ffffff', shadow: true };
+    } else if (lowerLabel.includes('raised bed') || lowerLabel.includes('planter') || lowerLabel.includes('container')) {
+      return { fill: 'url(#plasticGradient)', textColor: '#ffffff', shadow: true };
+    } else {
+      // Default to enhanced gradient based on original color
+      const gradientId = `customGradient_${color.replace('#', '')}`;
+      return { fill: color, textColor: '#ffffff', shadow: true, customGradient: true };
+    }
+  }, []);
+
   const screenToSVG = useCallback(
     (clientX: number, clientY: number): Position => {
       if (!svgRef.current) return { x: 0, y: 0 };
@@ -188,7 +210,7 @@ export function GardenCanvas({
             },
             size: { width, height },
             label: "New Structure",
-            color: "#a16207",
+            color: "#8b4513",
           };
           onElementAdd(newStructure);
           onSelectionChange(newStructure.id);
@@ -273,6 +295,66 @@ export function GardenCanvas({
               strokeWidth="0.5"
             />
           </pattern>
+          
+          {/* Structure gradients and patterns */}
+          <linearGradient id="woodGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#d2691e" />
+            <stop offset="30%" stopColor="#8b4513" />
+            <stop offset="70%" stopColor="#a0522d" />
+            <stop offset="100%" stopColor="#654321" />
+          </linearGradient>
+          
+          <linearGradient id="concreteGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#f5f5f5" />
+            <stop offset="30%" stopColor="#d3d3d3" />
+            <stop offset="70%" stopColor="#c0c0c0" />
+            <stop offset="100%" stopColor="#a9a9a9" />
+          </linearGradient>
+          
+          <linearGradient id="metalGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#e8e8e8" />
+            <stop offset="25%" stopColor="#c0c0c0" />
+            <stop offset="50%" stopColor="#a8a8a8" />
+            <stop offset="75%" stopColor="#909090" />
+            <stop offset="100%" stopColor="#787878" />
+          </linearGradient>
+          
+          <linearGradient id="plasticGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#2d5a27" />
+            <stop offset="30%" stopColor="#1e3a20" />
+            <stop offset="70%" stopColor="#0f2419" />
+            <stop offset="100%" stopColor="#0a1a0f" />
+          </linearGradient>
+          
+          {/* Shadow filter */}
+          <filter id="structureShadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="3" dy="3" stdDeviation="2" floodColor="rgba(0,0,0,0.3)" />
+          </filter>
+          
+          {/* Wood texture pattern */}
+          <pattern id="woodTexture" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+            <rect width="20" height="20" fill="url(#woodGradient)" />
+            <path d="M0,5 Q10,3 20,5 M0,10 Q10,8 20,10 M0,15 Q10,13 20,15" 
+                  stroke="rgba(101,67,33,0.3)" strokeWidth="0.5" fill="none" />
+          </pattern>
+          
+          {/* Concrete texture pattern */}
+          <pattern id="concreteTexture" x="0" y="0" width="15" height="15" patternUnits="userSpaceOnUse">
+            <rect width="15" height="15" fill="url(#concreteGradient)" />
+            <circle cx="3" cy="3" r="0.5" fill="rgba(128,128,128,0.4)" />
+            <circle cx="8" cy="7" r="0.3" fill="rgba(128,128,128,0.3)" />
+            <circle cx="12" cy="4" r="0.4" fill="rgba(128,128,128,0.3)" />
+            <circle cx="6" cy="11" r="0.3" fill="rgba(128,128,128,0.4)" />
+          </pattern>
+          
+          {/* Metal texture pattern */}
+          <pattern id="metalTexture" x="0" y="0" width="25" height="25" patternUnits="userSpaceOnUse">
+            <rect width="25" height="25" fill="url(#metalGradient)" />
+            <line x1="0" y1="5" x2="25" y2="5" stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" />
+            <line x1="0" y1="10" x2="25" y2="10" stroke="rgba(0,0,0,0.1)" strokeWidth="0.5" />
+            <line x1="0" y1="15" x2="25" y2="15" stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" />
+            <line x1="0" y1="20" x2="25" y2="20" stroke="rgba(0,0,0,0.1)" strokeWidth="0.5" />
+          </pattern>
         </defs>
         <rect
           width="100%"
@@ -289,31 +371,57 @@ export function GardenCanvas({
 
             if (element.type === "structure") {
               const el = element as Structure;
+              const material = getStructureMaterial(el.label, el.color);
+              const cornerRadius = Math.min(el.size.width, el.size.height) * 0.05; // 5% of smallest dimension
+              const fontSize = 14 * Math.sqrt(viewBox.width / 1000);
+              
               return (
                 <g
                   key={el.id}
                   data-element-id={el.id}
                   className={activeTool === "select" ? "cursor-move" : "cursor-pointer"}
                 >
+                  {/* Main structure with rounded corners and texture */}
                   <rect
                     x={el.position.x}
                     y={el.position.y}
                     width={el.size.width}
                     height={el.size.height}
-                    fill={el.color}
-                    stroke={isSelected ? selectionStroke : "transparent"}
+                    rx={cornerRadius}
+                    ry={cornerRadius}
+                    fill={material.fill}
+                    filter={material.shadow ? "url(#structureShadow)" : undefined}
+                    stroke={isSelected ? selectionStroke : "rgba(0,0,0,0.1)"}
                     strokeWidth={
-                      isSelected ? 2 * Math.sqrt(viewBox.width / 1000) : 0
+                      isSelected ? 3 * Math.sqrt(viewBox.width / 1000) : 1 * Math.sqrt(viewBox.width / 1000)
                     }
                   />
+                  
+                  {/* Subtle highlight along top edge for depth */}
+                  <rect
+                    x={el.position.x + 2}
+                    y={el.position.y + 2}
+                    width={el.size.width - 4}
+                    height={Math.max(4, el.size.height * 0.1)}
+                    rx={cornerRadius * 0.8}
+                    ry={cornerRadius * 0.8}
+                    fill="rgba(255,255,255,0.15)"
+                    className="pointer-events-none"
+                  />
+                  
+                  {/* Text with better styling */}
                   <text
                     x={el.position.x + el.size.width / 2}
                     y={el.position.y + el.size.height / 2}
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    fill="white"
-                    fontSize={14 * Math.sqrt(viewBox.width / 1000)}
+                    fill={material.textColor}
+                    fontSize={fontSize}
                     className="pointer-events-none font-semibold"
+                    style={{
+                      textShadow: material.textColor === '#ffffff' ? '1px 1px 2px rgba(0,0,0,0.7)' : '1px 1px 2px rgba(255,255,255,0.7)',
+                      filter: 'drop-shadow(1px 1px 1px rgba(0,0,0,0.3))'
+                    }}
                   >
                     {el.label}
                   </text>
@@ -392,10 +500,19 @@ export function GardenCanvas({
             height={Math.abs(
               currentMousePos.y - interactionState.current.drawStart.y
             )}
-            fill="rgba(161, 98, 7, 0.3)"
-            stroke="#a16207"
-            strokeWidth={1.5 * Math.sqrt(viewBox.width / 1000)}
-            strokeDasharray="6,6"
+            rx={Math.min(
+              Math.abs(currentMousePos.x - interactionState.current.drawStart.x),
+              Math.abs(currentMousePos.y - interactionState.current.drawStart.y)
+            ) * 0.05}
+            ry={Math.min(
+              Math.abs(currentMousePos.x - interactionState.current.drawStart.x),
+              Math.abs(currentMousePos.y - interactionState.current.drawStart.y)
+            ) * 0.05}
+            fill="rgba(210, 105, 30, 0.2)"
+            stroke="#d2691e"
+            strokeWidth={2 * Math.sqrt(viewBox.width / 1000)}
+            strokeDasharray="8,4"
+            filter="url(#structureShadow)"
           />
         )}
       </svg>
