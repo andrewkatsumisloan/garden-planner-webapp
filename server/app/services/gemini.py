@@ -105,6 +105,15 @@ Return your response as a single, valid JSON object that strictly follows the sc
             logger.error(f"Error calling Gemini API: {e}")
             raise ValueError(f"Failed to get plant recommendations: {str(e)}")
 
+    async def ask_gardening_question(self, question: str) -> str:
+        """Get a general gardening answer from Gemini"""
+        try:
+            response = self.model.generate_content(question)
+            return response.text.strip()
+        except Exception as e:
+            logger.error(f"Error getting gardening advice from Gemini: {e}")
+            raise ValueError("Failed to get gardening advice")
+
 
 # Singleton instance
 gemini_service = GeminiService()

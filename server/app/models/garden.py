@@ -25,7 +25,12 @@ class Garden(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     # Relationships
-    elements = relationship("GardenElement", back_populates="garden", cascade="all, delete-orphan")
+    elements = relationship(
+        "GardenElement", back_populates="garden", cascade="all, delete-orphan"
+    )
+    notes = relationship(
+        "GardenNote", back_populates="garden", cascade="all, delete-orphan"
+    )
 
 class GardenElement(Base):
     __tablename__ = "garden_elements"
@@ -66,3 +71,14 @@ class GardenElement(Base):
     
     # Relationships
     garden = relationship("Garden", back_populates="elements")
+
+
+class GardenNote(Base):
+    __tablename__ = "garden_notes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    garden_id = Column(Integer, ForeignKey("gardens.id"), nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    garden = relationship("Garden", back_populates="notes")
