@@ -241,6 +241,7 @@ export function GardenCanvas({
             size: { width, height },
             label: "New Structure",
             color: "#8b4513",
+            shape: "rectangle",
           };
           onElementAdd(newStructure);
           onSelectionChange(newStructure.id);
@@ -404,7 +405,49 @@ export function GardenCanvas({
               const material = getStructureMaterial(el.label, el.color);
               const cornerRadius = Math.min(el.size.width, el.size.height) * 0.05; // 5% of smallest dimension
               const fontSize = 14 * Math.sqrt(viewBox.width / 1000);
-              
+
+              if (el.shape === "ellipse") {
+                const cx = el.position.x + el.size.width / 2;
+                const cy = el.position.y + el.size.height / 2;
+                const rx = el.size.width / 2;
+                const ry = el.size.height / 2;
+                return (
+                  <g
+                    key={el.id}
+                    data-element-id={el.id}
+                    className={activeTool === "select" ? "cursor-move" : "cursor-pointer"}
+                  >
+                    <ellipse
+                      cx={cx}
+                      cy={cy}
+                      rx={rx}
+                      ry={ry}
+                      fill={material.fill}
+                      filter={material.shadow ? "url(#structureShadow)" : undefined}
+                      stroke={isSelected ? selectionStroke : "rgba(0,0,0,0.1)"}
+                      strokeWidth={
+                        isSelected ? 3 * Math.sqrt(viewBox.width / 1000) : 1 * Math.sqrt(viewBox.width / 1000)
+                      }
+                    />
+                    <text
+                      x={cx}
+                      y={cy}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      fill={material.textColor}
+                      fontSize={fontSize}
+                      className="pointer-events-none font-semibold"
+                      style={{
+                        textShadow: material.textColor === '#ffffff' ? '1px 1px 2px rgba(0,0,0,0.7)' : '1px 1px 2px rgba(255,255,255,0.7)',
+                        filter: 'drop-shadow(1px 1px 1px rgba(0,0,0,0.3))'
+                      }}
+                    >
+                      {el.label}
+                    </text>
+                  </g>
+                );
+              }
+
               return (
                 <g
                   key={el.id}
@@ -426,7 +469,7 @@ export function GardenCanvas({
                       isSelected ? 3 * Math.sqrt(viewBox.width / 1000) : 1 * Math.sqrt(viewBox.width / 1000)
                     }
                   />
-                  
+
                   {/* Subtle highlight along top edge for depth */}
                   <rect
                     x={el.position.x + 2}
@@ -438,7 +481,7 @@ export function GardenCanvas({
                     fill="rgba(255,255,255,0.15)"
                     className="pointer-events-none"
                   />
-                  
+
                   {/* Text with better styling */}
                   <text
                     x={el.position.x + el.size.width / 2}

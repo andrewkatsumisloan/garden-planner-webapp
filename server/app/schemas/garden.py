@@ -14,6 +14,7 @@ class GardenElementBase(BaseModel):
     height: Optional[float] = None
     label: Optional[str] = None
     color: Optional[str] = None
+    shape: Optional[str] = None
     
     # Plant fields
     common_name: Optional[str] = None
@@ -41,6 +42,7 @@ class GardenElementUpdate(BaseModel):
     height: Optional[float] = None
     label: Optional[str] = None
     color: Optional[str] = None
+    shape: Optional[str] = None
     common_name: Optional[str] = None
     botanical_name: Optional[str] = None
     plant_type: Optional[str] = None

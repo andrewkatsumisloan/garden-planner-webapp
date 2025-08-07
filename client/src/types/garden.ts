@@ -41,6 +41,7 @@ export interface Structure extends CanvasObject {
   size: Size;
   label: string;
   color: string;
+  shape: 'rectangle' | 'ellipse';
 }
 
 export interface PlantInstance extends CanvasObject {
@@ -102,6 +103,7 @@ export interface SavedGardenElement {
   height?: number;
   label?: string;
   color?: string;
+   shape?: string;
   common_name?: string;
   botanical_name?: string;
   plant_type?: string;
