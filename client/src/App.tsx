@@ -1,7 +1,9 @@
 // ===== File: client/src/App.tsx =====
-import { ClerkProvider, SignInButton, useUser } from "@clerk/clerk-react";
-import { GardenPlanner } from "./components/garden/GardenPlanner";
+import { ClerkProvider, useUser } from "@clerk/clerk-react";
 import { Loader2 } from "lucide-react";
+import { GardenPlanner } from "./components/garden/GardenPlanner";
+import Header from "./components/Header";
+import LandingPage from "./components/LandingPage";
 import "./App.css";
 
 // Get Clerk publishable key from environment variable
@@ -17,31 +19,20 @@ function AppContent() {
   if (!isLoaded) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-100">
-        <div className="flex items-center gap-2">
-          <Loader2 className="h-5 w-5 animate-spin" />
-          <span>Loading...</span>
-        </div>
+        <Loader2 className="h-5 w-5 animate-spin" />
+        <span className="ml-2">Loading...</span>
       </div>
     );
   }
 
-  if (!isSignedIn) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-gray-100">
-        <div className="text-center space-y-4">
-          <h1 className="text-2xl font-bold">Garden Layout Planner</h1>
-          <p className="text-gray-600">Sign in to start planning your garden</p>
-          <SignInButton mode="modal">
-            <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-              Sign In
-            </button>
-          </SignInButton>
-        </div>
-      </div>
-    );
-  }
-
-  return <GardenPlanner />;
+  return (
+    <div className="min-h-screen flex flex-col bg-gray-50">
+      <Header />
+      <main className="flex-1">
+        {isSignedIn ? <GardenPlanner /> : <LandingPage />}
+      </main>
+    </div>
+  );
 }
 
 function App() {
