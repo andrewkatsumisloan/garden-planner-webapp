@@ -1,5 +1,12 @@
-import { MousePointer, Square, Type, Save, Clock, FolderOpen, StickyNote } from 'lucide-react';
+import { useState } from 'react';
+import { MousePointer, Square, Type, Save, Clock, FolderOpen, StickyNote, Check } from 'lucide-react';
 import { Button } from '../ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../ui/dropdown-menu';
 import { Tool, StructureShape } from '../../types/garden';
 
 interface ToolbarProps {
@@ -25,6 +32,7 @@ export function Toolbar({
   onShowGardens,
   onShowNotes,
 }: ToolbarProps) {
+  const [shapeMenuOpen, setShapeMenuOpen] = useState(false);
   return (
     <div className="flex items-center gap-2 p-4 bg-white border-b border-gray-200">
       <div className="flex items-center gap-1">
@@ -38,26 +46,35 @@ export function Toolbar({
           Select (V)
         </Button>
         
-        <Button
-          variant={activeTool === 'structure' ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => onToolChange('structure')}
-          className="flex items-center gap-2"
-        >
-          <Square className="h-4 w-4" />
-          Structure (R)
-        </Button>
-
-        {activeTool === 'structure' && (
-          <select
-            className="ml-2 border rounded p-1 text-sm"
-            value={structureShape}
-            onChange={(e) => onStructureShapeChange(e.target.value as StructureShape)}
+        <DropdownMenu open={shapeMenuOpen} onOpenChange={setShapeMenuOpen}>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant={activeTool === 'structure' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => onToolChange('structure')}
+              className="flex items-center gap-2"
+              onMouseEnter={() => setShapeMenuOpen(true)}
+            >
+              <Square className="h-4 w-4" />
+              Structure (R)
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            sideOffset={4}
+            align="start"
+            onMouseEnter={() => setShapeMenuOpen(true)}
+            onMouseLeave={() => setShapeMenuOpen(false)}
           >
-            <option value="rectangle">Rectangle</option>
-            <option value="ellipse">Ellipse</option>
-          </select>
-        )}
+            <DropdownMenuItem onClick={() => onStructureShapeChange('rectangle')}>
+              Rectangle
+              {structureShape === 'rectangle' && <Check className="ml-auto h-4 w-4" />}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onStructureShapeChange('ellipse')}>
+              Ellipse
+              {structureShape === 'ellipse' && <Check className="ml-auto h-4 w-4" />}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         
         <Button
           variant={activeTool === 'text' ? 'default' : 'outline'}
