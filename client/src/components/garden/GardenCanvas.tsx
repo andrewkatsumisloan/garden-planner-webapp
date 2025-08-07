@@ -65,7 +65,6 @@ export function GardenCanvas({
       return { fill: 'url(#plasticGradient)', textColor: '#ffffff', shadow: true };
     } else {
       // Default to enhanced gradient based on original color
-      const gradientId = `customGradient_${color.replace('#', '')}`;
       return { fill: color, textColor: '#ffffff', shadow: true, customGradient: true };
     }
   }, []);
@@ -109,22 +108,29 @@ export function GardenCanvas({
 
       if (e.button !== 0) return;
 
-      // Check if clicking on an element for dragging
       const target = e.target as SVGElement;
       const elementId = target
         .closest("[data-element-id]")
         ?.getAttribute("data-element-id");
 
-      if (activeTool === "select" && elementId) {
-        const element = elements.find(el => el.id === elementId);
-        if (element) {
-          interactionState.current.isDragging = true;
-          interactionState.current.dragElementId = elementId;
-          interactionState.current.dragOffset = {
-            x: startPos.x - element.position.x,
-            y: startPos.y - element.position.y,
-          };
-          onSelectionChange(elementId);
+      if (activeTool === "select") {
+        if (elementId) {
+          const element = elements.find(el => el.id === elementId);
+          if (element) {
+            interactionState.current.isDragging = true;
+            interactionState.current.dragElementId = elementId;
+            interactionState.current.dragOffset = {
+              x: startPos.x - element.position.x,
+              y: startPos.y - element.position.y,
+            };
+            onSelectionChange(elementId);
+            e.preventDefault();
+            return;
+          }
+        } else {
+          interactionState.current.isPanning = true;
+          interactionState.current.panStart = { x: e.clientX, y: e.clientY };
+          if (svgRef.current) svgRef.current.style.cursor = "grabbing";
           e.preventDefault();
           return;
         }

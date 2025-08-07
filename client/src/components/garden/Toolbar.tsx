@@ -88,7 +88,7 @@ export function Toolbar({
       )}
       
       <div className="ml-auto text-sm text-gray-500">
-        Tip: Hold Shift and drag to pan, or use mouse wheel to zoom
+        Tip: Drag on empty space to pan, or use mouse wheel to zoom
       </div>
     </div>
   );
