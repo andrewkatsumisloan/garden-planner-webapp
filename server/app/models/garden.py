@@ -49,6 +49,7 @@ class GardenElement(Base):
     height = Column(Float, nullable=True)
     label = Column(String(255), nullable=True)
     color = Column(String(7), nullable=True)  # Hex color
+    shape = Column(String(50), nullable=True)
     
     # Plant-specific fields
     common_name = Column(String(255), nullable=True)
