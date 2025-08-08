@@ -114,6 +114,126 @@ Return your response as a single, valid JSON object that strictly follows the sc
             logger.error(f"Error getting gardening advice from Gemini: {e}")
             raise ValueError("Failed to get gardening advice")
 
+    async def get_more_plant_recommendations(
+        self,
+        zip_code: str,
+        already_suggested_botanical_names: list[str],
+        count_per_category: int = 3,
+    ) -> Dict[str, Any]:
+        """
+        Ask for additional recommendations excluding already suggested botanical names.
+        """
+        exclusions = "\n".join(
+            [f"- {name}" for name in already_suggested_botanical_names]
+        )
+
+        prompt = f"""You are an expert horticulturalist and garden planner.
+
+User's Location:
+- Zip Code: {zip_code}
+
+Task:
+Provide additional plant recommendations that would thrive in the above location.
+Exclude any plants whose botanicalName is in this list (do not repeat them):
+
+{exclusions}
+
+Return exactly {count_per_category} new plants for each category: "Shade Trees", "Fruit Trees", "Flowering Shrubs", "Vegetables", and "Herbs".
+
+For each plant, include: commonName, botanicalName, plantType, sunlightNeeds, waterNeeds, matureSize, spacing (single number, feet).
+
+Return a single valid JSON object exactly matching the schema below with no extra text outside the JSON."""
+
+        plant_schema = {
+            "type": "OBJECT",
+            "properties": {
+                "commonName": {"type": "STRING"},
+                "botanicalName": {"type": "STRING"},
+                "plantType": {"type": "STRING"},
+                "sunlightNeeds": {"type": "STRING"},
+                "waterNeeds": {"type": "STRING"},
+                "matureSize": {"type": "STRING"},
+                "spacing": {"type": "NUMBER"},
+            },
+            "required": [
+                "commonName",
+                "botanicalName",
+                "plantType",
+                "sunlightNeeds",
+                "waterNeeds",
+                "matureSize",
+                "spacing",
+            ],
+        }
+
+        schema = {
+            "type": "OBJECT",
+            "properties": {
+                "recommendedPlants": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "shadeTrees": {"type": "ARRAY", "items": plant_schema},
+                        "fruitTrees": {"type": "ARRAY", "items": plant_schema},
+                        "floweringShrubs": {"type": "ARRAY", "items": plant_schema},
+                        "vegetables": {"type": "ARRAY", "items": plant_schema},
+                        "herbs": {"type": "ARRAY", "items": plant_schema},
+                    },
+                }
+            },
+        }
+
+        try:
+            response = self.model.generate_content(
+                prompt,
+                generation_config=genai.GenerationConfig(
+                    response_mime_type="application/json", response_schema=schema
+                ),
+            )
+            result = json.loads(response.text)
+            logger.info(
+                f"Successfully generated additional plant recommendations for zip code: {zip_code}"
+            )
+            return result
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse JSON response from Gemini (more): {e}")
+            raw_response = getattr(response, "text", "N/A")
+            logger.error(f"Raw response: {raw_response}")
+            raise ValueError("Invalid JSON response from Gemini API")
+        except Exception as e:
+            logger.error(f"Error calling Gemini API (more): {e}")
+            raise ValueError(
+                f"Failed to get additional plant recommendations: {str(e)}"
+            )
+
+    async def ask_contextual_gardening_question(
+        self, question: str, zip_code: str, garden_context: Dict[str, Any]
+    ) -> str:
+        """Answer a gardening question using user's location and garden context."""
+        try:
+            summarized_context = json.dumps(garden_context, indent=2)
+            prompt = f"""
+You are an expert horticulturalist and garden planner. Answer the user's question with specific, actionable guidance.
+
+User's Location:
+- Zip Code: {zip_code}
+
+User's Current Garden Context (JSON):
+{summarized_context}
+
+Question:
+{question}
+
+Guidelines:
+- Consider USDA zone, sun exposure, spacing, and plant compatibility.
+- Reference plants and structures already in the garden when relevant.
+- Be concise and practical. If recommending quantities or spacing, provide numbers.
+"""
+            response = self.model.generate_content(prompt)
+            return response.text.strip()
+        except Exception as e:
+            logger.error(f"Error getting contextual gardening advice from Gemini: {e}")
+            raise ValueError("Failed to get contextual gardening advice")
+
 
 # Singleton instance
 gemini_service = GeminiService()

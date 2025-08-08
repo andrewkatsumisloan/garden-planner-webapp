@@ -16,7 +16,7 @@ import {
   Position,
   StructureShape,
 } from "../../types/garden";
-import { API_BASE_URL } from "../../config";
+import type { Plant } from "../../types/garden";
 import { gardenService } from "../../services/gardenService";
 
 const initialCanvasState = {
@@ -41,12 +41,14 @@ const initialAppState: AppState = {
   lastSaved: null,
   isLoadingGardens: false,
   availableGardens: [],
+  showPlantSpacing: false,
 };
 
 export function GardenPlanner() {
   const { user } = useUser();
   const { getToken } = useAuth();
   const [appState, setAppState] = useState<AppState>(initialAppState);
+  const [draggingPlant, setDraggingPlant] = useState<Plant | null>(null);
 
   const undoStack = useRef<CanvasState[]>([]);
   const redoStack = useRef<CanvasState[]>([]);
@@ -90,7 +92,12 @@ export function GardenPlanner() {
     }, 2000); // Auto-save after 2 seconds of inactivity
 
     return () => clearTimeout(saveTimeout);
-  }, [appState.canvas, appState.currentGarden?.id, appState.isSaving]);
+  }, [
+    appState.canvas,
+    appState.currentGarden,
+    appState.currentGarden?.id,
+    appState.isSaving,
+  ]);
 
   // Create initial garden when user enters zip code
   const createInitialGarden = useCallback(
@@ -143,11 +150,18 @@ export function GardenPlanner() {
       }
 
       try {
+        let targetGardenId = appState.currentGarden?.id || null;
         // Check if we need to create or switch to a garden for this zip code (unless we're being called from handleLoadGarden)
-        if (!skipGardenCheck && (!appState.currentGarden || appState.currentGarden.zip_code !== zipCode)) {
+        if (
+          !skipGardenCheck &&
+          (!appState.currentGarden ||
+            appState.currentGarden.zip_code !== zipCode)
+        ) {
           // First, check if we already have a garden for this zip code
-          const existingGarden = appState.availableGardens.find(g => g.zip_code === zipCode);
-          
+          const existingGarden = appState.availableGardens.find(
+            (g) => g.zip_code === zipCode
+          );
+
           if (existingGarden) {
             // Load the existing garden and get recommendations
             const garden = await gardenService.getGarden(existingGarden.id);
@@ -160,7 +174,7 @@ export function GardenPlanner() {
               canvas: canvasState,
               sidePanel: "recommendations",
             }));
-            
+            targetGardenId = garden.id;
             // Continue to fetch recommendations below
           } else {
             // Create a new garden for this zip code
@@ -168,32 +182,24 @@ export function GardenPlanner() {
             if (!garden) {
               throw new Error("Failed to create garden");
             }
+            targetGardenId = garden.id;
           }
         }
 
-        const token = await getToken();
-
-        const response = await fetch(
-          `${API_BASE_URL}/api/v1/garden/plant-recommendations`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ zip_code: zipCode }),
-          }
-        );
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+        const gardenId = targetGardenId || appState.currentGarden?.id;
+        if (!gardenId) throw new Error("Garden not set");
+        let recs;
+        try {
+          recs = await gardenService.getGardenRecommendations(gardenId);
+        } catch {
+          recs = await gardenService.generateGardenRecommendations(
+            gardenId,
+            false
+          );
         }
-
-        const data = await response.json();
-
         setAppState((prev) => ({
           ...prev,
-          plantRecommendations: data.recommendations.recommendedPlants,
+          plantRecommendations: recs,
           isLoadingRecommendations: false,
         }));
       } catch (error) {
@@ -205,8 +211,45 @@ export function GardenPlanner() {
         }));
       }
     },
-    [user, getToken, appState.currentGarden, appState.availableGardens, createInitialGarden]
+    [
+      user,
+      appState.currentGarden,
+      appState.availableGardens,
+      createInitialGarden,
+    ]
   );
+
+  const handleRequestMore = useCallback(async () => {
+    if (!appState.currentGarden || !appState.plantRecommendations) return;
+    setAppState((prev) => ({ ...prev, isLoadingRecommendations: true }));
+    try {
+      const categories = [
+        "shadeTrees",
+        "fruitTrees",
+        "floweringShrubs",
+        "vegetables",
+        "herbs",
+      ] as const;
+      const exclude = categories
+        .flatMap((cat) => appState.plantRecommendations?.[cat] || [])
+        .map((p) => p.botanicalName)
+        .filter(Boolean) as string[];
+
+      const recs = await gardenService.requestMoreRecommendations(
+        appState.currentGarden.id,
+        exclude,
+        3
+      );
+      setAppState((prev) => ({
+        ...prev,
+        plantRecommendations: recs,
+        isLoadingRecommendations: false,
+      }));
+    } catch (error) {
+      console.error("Failed to request more recommendations:", error);
+      setAppState((prev) => ({ ...prev, isLoadingRecommendations: false }));
+    }
+  }, [appState.currentGarden, appState.plantRecommendations]);
 
   // Load available gardens
   const loadAvailableGardens = useCallback(async () => {
@@ -373,10 +416,13 @@ export function GardenPlanner() {
     async (content: string) => {
       if (!appState.currentGarden) return;
       try {
-        const note = await gardenService.addNote(appState.currentGarden.id, content);
+        const note = await gardenService.addNote(
+          appState.currentGarden.id,
+          content
+        );
         setAppState((prev) => ({ ...prev, notes: [...prev.notes, note] }));
       } catch (error) {
-        console.error('Failed to add note:', error);
+        console.error("Failed to add note:", error);
       }
     },
     [appState.currentGarden]
@@ -409,10 +455,7 @@ export function GardenPlanner() {
           e.preventDefault();
           setAppState((prev) => ({ ...prev, activeTool: "structure" }));
           break;
-        case "t":
-          e.preventDefault();
-          setAppState((prev) => ({ ...prev, activeTool: "text" }));
-          break;
+        // Remove text tool shortcut for now
         case "escape":
           e.preventDefault();
           setAppState((prev) => ({
@@ -437,7 +480,7 @@ export function GardenPlanner() {
   }, []);
 
   const handleShowNotes = useCallback(() => {
-    setAppState((prev) => ({ ...prev, sidePanel: 'notes' }));
+    setAppState((prev) => ({ ...prev, sidePanel: "notes" }));
   }, []);
 
   const handleElementAdd = useCallback(
@@ -471,6 +514,7 @@ export function GardenPlanner() {
   const handleSelectionChange = useCallback((elementId: string | null) => {
     setAppState((prev) => ({
       ...prev,
+      activeTool: elementId ? prev.activeTool : "select",
       canvas: { ...prev.canvas, selectedElementId: elementId },
       sidePanel: elementId ? "properties" : "recommendations",
     }));
@@ -635,6 +679,9 @@ export function GardenPlanner() {
         handleElementAdd(newPlant);
       } catch (error) {
         console.error("Error handling plant drop:", error);
+      } finally {
+        // Always clear drag ghost after drop
+        setDraggingPlant(null);
       }
     },
     [handleElementAdd]
@@ -657,6 +704,13 @@ export function GardenPlanner() {
         gardenName={appState.currentGarden?.name}
         onShowGardens={handleShowGardens}
         onShowNotes={handleShowNotes}
+        showPlantSpacing={appState.showPlantSpacing}
+        onTogglePlantSpacing={() =>
+          setAppState((prev) => ({
+            ...prev,
+            showPlantSpacing: !prev.showPlantSpacing,
+          }))
+        }
       />
 
       <div className="flex-1 flex overflow-hidden">
@@ -672,7 +726,63 @@ export function GardenPlanner() {
             onElementUpdate={handleElementUpdate}
             onCanvasDrop={handleCanvasDrop}
             onHistorySnapshot={handleHistorySnapshot}
+            showPlantSpacing={appState.showPlantSpacing}
+            draggingPlant={draggingPlant}
           />
+
+          {/* Overlay zoom controls as sibling to avoid clipping/stacking */}
+          <div className="pointer-events-none absolute inset-0">
+            <div className="pointer-events-auto fixed bottom-6 left-6 z-50 flex flex-col space-y-2">
+              <button
+                className="w-9 h-9 rounded-full bg-white shadow flex items-center justify-center border"
+                onClick={() => {
+                  const { viewBox } = appState.canvas;
+                  const clampedWidth = Math.max(
+                    200,
+                    Math.min(5000, viewBox.width * 0.97)
+                  );
+                  const scale = clampedWidth / viewBox.width;
+                  const newHeight = viewBox.height * scale;
+                  const centerX = viewBox.x + viewBox.width / 2;
+                  const centerY = viewBox.y + viewBox.height / 2;
+                  handleViewBoxChange({
+                    x: centerX - clampedWidth / 2,
+                    y: centerY - newHeight / 2,
+                    width: clampedWidth,
+                    height: newHeight,
+                  });
+                }}
+                aria-label="Zoom in"
+                title="Zoom in"
+              >
+                +
+              </button>
+              <button
+                className="w-9 h-9 rounded-full bg-white shadow flex items-center justify-center border"
+                onClick={() => {
+                  const { viewBox } = appState.canvas;
+                  const clampedWidth = Math.max(
+                    200,
+                    Math.min(5000, viewBox.width * 1.03)
+                  );
+                  const scale = clampedWidth / viewBox.width;
+                  const newHeight = viewBox.height * scale;
+                  const centerX = viewBox.x + viewBox.width / 2;
+                  const centerY = viewBox.y + viewBox.height / 2;
+                  handleViewBoxChange({
+                    x: centerX - clampedWidth / 2,
+                    y: centerY - newHeight / 2,
+                    width: clampedWidth,
+                    height: newHeight,
+                  });
+                }}
+                aria-label="Zoom out"
+                title="Zoom out"
+              >
+                −
+              </button>
+            </div>
+          </div>
         </div>
 
         <div className="w-80 bg-white border-l border-gray-200 flex-shrink-0 overflow-y-auto">
@@ -682,6 +792,16 @@ export function GardenPlanner() {
               recommendations={appState.plantRecommendations}
               isLoading={appState.isLoadingRecommendations}
               onZipCodeSubmit={fetchPlantRecommendations}
+              onRequestMore={handleRequestMore}
+              onAskQuestion={async (q: string) => {
+                if (!appState.currentGarden) throw new Error("Garden not set");
+                return gardenService.askGardenQuestion(
+                  appState.currentGarden.id,
+                  q
+                );
+              }}
+              onPlantDragStart={(p) => setDraggingPlant(p)}
+              onPlantDragEnd={() => setDraggingPlant(null)}
             />
           ) : appState.sidePanel === "properties" ? (
             <PropertiesPanel
@@ -690,7 +810,10 @@ export function GardenPlanner() {
               onElementDelete={handleElementDelete}
             />
           ) : appState.sidePanel === "notes" ? (
-            <GardenNotesPanel notes={appState.notes} onAddNote={handleAddNote} />
+            <GardenNotesPanel
+              notes={appState.notes}
+              onAddNote={handleAddNote}
+            />
           ) : (
             <GardenManagementPanel
               availableGardens={appState.availableGardens}

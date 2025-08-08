@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 import logging
+import json
 from app.services.gemini import gemini_service
 from app.core.auth import get_current_user
 from app.schemas.user import User
@@ -22,6 +23,7 @@ from app.models.garden import (
     Garden as GardenModel,
     GardenElement as GardenElementModel,
     GardenNote as GardenNoteModel,
+    GardenRecommendation as GardenRecommendationModel,
 )
 from app.db.session import get_db
 
@@ -29,13 +31,18 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+
 @router.get("/test")
 async def test_garden_endpoint():
     """Test endpoint to verify garden router is working"""
     return {"message": "Garden router is working!", "status": "ok"}
 
+
 class PlantRecommendationRequest(BaseModel):
-    zip_code: str = Field(..., min_length=5, max_length=5, description="5-digit US zip code")
+    zip_code: str = Field(
+        ..., min_length=5, max_length=5, description="5-digit US zip code"
+    )
+
 
 class PlantRecommendationResponse(BaseModel):
     zip_code: str
@@ -49,11 +56,11 @@ class GardenQuestionRequest(BaseModel):
 class GardenQuestionResponse(BaseModel):
     answer: str
 
+
 # Plant recommendations endpoint (existing)
 @router.post("/plant-recommendations", response_model=PlantRecommendationResponse)
 async def get_plant_recommendations(
-    request: PlantRecommendationRequest,
-    current_user: User = Depends(get_current_user)
+    request: PlantRecommendationRequest, current_user: User = Depends(get_current_user)
 ):
     """
     Get plant recommendations based on zip code using Gemini AI
@@ -62,29 +69,234 @@ async def get_plant_recommendations(
         # Validate zip code format (basic validation)
         if not request.zip_code.isdigit():
             raise HTTPException(
-                status_code=400, 
-                detail="Zip code must contain only digits"
+                status_code=400, detail="Zip code must contain only digits"
             )
-        
-        logger.info(f"Getting plant recommendations for zip code: {request.zip_code} (user: {current_user.clerk_user_id})")
-        
-        # Get recommendations from Gemini
-        recommendations = await gemini_service.get_plant_recommendations(request.zip_code)
-        
-        return PlantRecommendationResponse(
-            zip_code=request.zip_code,
-            recommendations=recommendations
+
+        logger.info(
+            f"Getting plant recommendations for zip code: {request.zip_code} (user: {current_user.clerk_user_id})"
         )
-        
+
+        # Get recommendations from Gemini
+        recommendations = await gemini_service.get_plant_recommendations(
+            request.zip_code
+        )
+
+        # Persist as artifact per user's current zip code by garden (if exists)
+        # We store per garden to avoid ambiguity; find or create garden for this zip code
+        # Note: client generally ensures a current garden exists for zip code
+        # Here we persist only if there is an existing garden for this user+zip
+        return_data = PlantRecommendationResponse(
+            zip_code=request.zip_code,
+            recommendations=recommendations,
+        )
+        return return_data
+
     except ValueError as e:
         logger.error(f"Validation error for zip code {request.zip_code}: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Unexpected error getting plant recommendations: {e}")
         raise HTTPException(
-            status_code=500, 
-            detail="Failed to get plant recommendations. Please try again later."
+            status_code=500,
+            detail="Failed to get plant recommendations. Please try again later.",
         )
+
+
+class GardenRecommendationsResponse(BaseModel):
+    garden_id: int
+    data: Dict[str, Any]
+
+
+@router.get(
+    "/gardens/{garden_id}/recommendations", response_model=GardenRecommendationsResponse
+)
+async def get_garden_recommendations(
+    garden_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    garden = (
+        db.query(GardenModel)
+        .filter(
+            GardenModel.id == garden_id,
+            GardenModel.user_id == current_user.clerk_user_id,
+        )
+        .first()
+    )
+
+    if not garden:
+        raise HTTPException(status_code=404, detail="Garden not found")
+
+    rec = (
+        db.query(GardenRecommendationModel)
+        .filter(GardenRecommendationModel.garden_id == garden_id)
+        .first()
+    )
+
+    if not rec:
+        # No recommendations yet
+        raise HTTPException(
+            status_code=404, detail="No recommendations stored for this garden"
+        )
+
+    return GardenRecommendationsResponse(garden_id=garden_id, data=json.loads(rec.data))
+
+
+class GenerateGardenRecommendationsRequest(BaseModel):
+    force_refresh: bool = False
+
+
+@router.post(
+    "/gardens/{garden_id}/recommendations", response_model=GardenRecommendationsResponse
+)
+async def generate_garden_recommendations(
+    garden_id: int,
+    request: GenerateGardenRecommendationsRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    garden = (
+        db.query(GardenModel)
+        .filter(
+            GardenModel.id == garden_id,
+            GardenModel.user_id == current_user.clerk_user_id,
+        )
+        .first()
+    )
+
+    if not garden:
+        raise HTTPException(status_code=404, detail="Garden not found")
+
+    existing = (
+        db.query(GardenRecommendationModel)
+        .filter(GardenRecommendationModel.garden_id == garden_id)
+        .first()
+    )
+
+    if existing and not request.force_refresh:
+        return GardenRecommendationsResponse(
+            garden_id=garden_id, data=json.loads(existing.data)
+        )
+
+    try:
+        rec = await gemini_service.get_plant_recommendations(garden.zip_code)
+        payload = json.dumps(rec)
+
+        if existing:
+            existing.data = payload
+        else:
+            existing = GardenRecommendationModel(garden_id=garden_id, data=payload)
+            db.add(existing)
+        db.commit()
+        db.refresh(existing)
+        return GardenRecommendationsResponse(
+            garden_id=garden_id, data=json.loads(existing.data)
+        )
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed generating recommendations: {e}")
+        raise HTTPException(
+            status_code=500, detail="Failed to generate recommendations"
+        )
+
+
+class MoreRecommendationsRequest(BaseModel):
+    exclude_botanical_names: List[str] = []
+    count_per_category: int = 3
+
+
+@router.post(
+    "/gardens/{garden_id}/recommendations/more",
+    response_model=GardenRecommendationsResponse,
+)
+async def request_more_recommendations(
+    garden_id: int,
+    request: MoreRecommendationsRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    garden = (
+        db.query(GardenModel)
+        .filter(
+            GardenModel.id == garden_id,
+            GardenModel.user_id == current_user.clerk_user_id,
+        )
+        .first()
+    )
+
+    if not garden:
+        raise HTTPException(status_code=404, detail="Garden not found")
+
+    existing = (
+        db.query(GardenRecommendationModel)
+        .filter(GardenRecommendationModel.garden_id == garden_id)
+        .first()
+    )
+
+    exclude = request.exclude_botanical_names
+    if not exclude and existing:
+        try:
+            existing_json = json.loads(existing.data)
+            # Flatten current botanical names to exclude
+            all_plants = []
+            recs = existing_json.get("recommendedPlants", {})
+            for key in [
+                "shadeTrees",
+                "fruitTrees",
+                "floweringShrubs",
+                "vegetables",
+                "herbs",
+            ]:
+                all_plants.extend(recs.get(key, []))
+            exclude = [
+                p.get("botanicalName") for p in all_plants if p.get("botanicalName")
+            ]
+        except Exception:
+            exclude = []
+
+    try:
+        more = await gemini_service.get_more_plant_recommendations(
+            garden.zip_code, exclude, request.count_per_category
+        )
+
+        # Merge with existing and upsert
+        merged = more
+        if existing:
+            try:
+                existing_json = json.loads(existing.data)
+                merged = {"recommendedPlants": {}}
+                categories = [
+                    "shadeTrees",
+                    "fruitTrees",
+                    "floweringShrubs",
+                    "vegetables",
+                    "herbs",
+                ]
+                for cat in categories:
+                    merged["recommendedPlants"][cat] = existing_json.get(
+                        "recommendedPlants", {}
+                    ).get(cat, []) + more.get("recommendedPlants", {}).get(cat, [])
+            except Exception:
+                merged = more
+
+        payload = json.dumps(merged)
+        if existing:
+            existing.data = payload
+        else:
+            existing = GardenRecommendationModel(garden_id=garden_id, data=payload)
+            db.add(existing)
+        db.commit()
+        db.refresh(existing)
+        return GardenRecommendationsResponse(
+            garden_id=garden_id, data=json.loads(existing.data)
+        )
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed getting more recommendations: {e}")
+        raise HTTPException(
+            status_code=500, detail="Failed to get more recommendations"
+        )
+
 
 # General gardening question endpoint
 @router.post("/ask", response_model=GardenQuestionResponse)
@@ -99,126 +311,253 @@ async def ask_gardening_question(
     except Exception as e:
         logger.error(f"Error getting gardening advice: {e}")
         raise HTTPException(
-            status_code=500, detail="Failed to get gardening advice. Please try again later."
+            status_code=500,
+            detail="Failed to get gardening advice. Please try again later.",
         )
+
+
+# Contextual gardening Q&A per garden
+class GardenContextQuestionRequest(BaseModel):
+    question: str = Field(
+        ..., description="Gardening question to ask with garden context"
+    )
+
+
+@router.post("/gardens/{garden_id}/ask", response_model=GardenQuestionResponse)
+async def ask_gardening_question_with_context(
+    garden_id: int,
+    request: GardenContextQuestionRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Ask a gardening question using user's garden and location context."""
+    # Verify garden ownership and load context
+    garden = (
+        db.query(GardenModel)
+        .filter(
+            GardenModel.id == garden_id,
+            GardenModel.user_id == current_user.clerk_user_id,
+        )
+        .first()
+    )
+
+    if not garden:
+        raise HTTPException(status_code=404, detail="Garden not found")
+
+    # Build lightweight garden context: metadata and elements summary
+    elements = (
+        db.query(GardenElementModel)
+        .filter(GardenElementModel.garden_id == garden_id)
+        .all()
+    )
+
+    def map_element(el: GardenElementModel) -> Dict[str, Any]:
+        base = {
+            "elementId": el.element_id,
+            "type": el.element_type,
+            "position": {"x": el.position_x, "y": el.position_y},
+        }
+        if el.element_type == "plant":
+            base.update(
+                {
+                    "commonName": el.common_name,
+                    "botanicalName": el.botanical_name,
+                    "plantType": el.plant_type,
+                    "sunlightNeeds": el.sunlight_needs,
+                    "waterNeeds": el.water_needs,
+                    "matureSize": el.mature_size,
+                    "spacing": el.spacing,
+                }
+            )
+        elif el.element_type == "structure":
+            base.update(
+                {
+                    "size": {"width": el.width, "height": el.height},
+                    "label": el.label,
+                    "color": el.color,
+                    "shape": el.shape,
+                }
+            )
+        elif el.element_type == "text":
+            base.update(
+                {
+                    "text": el.text_content,
+                    "fontSize": el.font_size,
+                    "color": el.text_color,
+                }
+            )
+        return base
+
+    garden_context = {
+        "metadata": {
+            "name": garden.name,
+            "description": garden.description,
+            "zipCode": garden.zip_code,
+            "view": {
+                "x": garden.view_box_x,
+                "y": garden.view_box_y,
+                "width": garden.view_box_width,
+                "height": garden.view_box_height,
+                "zoom": garden.zoom,
+                "gridSize": garden.grid_size,
+            },
+        },
+        "elements": [map_element(el) for el in elements],
+    }
+
+    try:
+        answer = await gemini_service.ask_contextual_gardening_question(
+            request.question, garden.zip_code, garden_context
+        )
+        return GardenQuestionResponse(answer=answer)
+    except Exception as e:
+        logger.error(f"Error getting contextual gardening advice: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to get contextual gardening advice. Please try again later.",
+        )
+
 
 # Garden CRUD endpoints
 @router.get("/gardens", response_model=List[GardenSummary])
 async def list_gardens(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     """
     Get all gardens for the current user
     """
-    gardens = db.query(GardenModel).filter(GardenModel.user_id == current_user.clerk_user_id).all()
-    
+    gardens = (
+        db.query(GardenModel)
+        .filter(GardenModel.user_id == current_user.clerk_user_id)
+        .all()
+    )
+
     # Add element count to each garden
     garden_summaries = []
     for garden in gardens:
-        element_count = db.query(GardenElementModel).filter(GardenElementModel.garden_id == garden.id).count()
-        garden_summaries.append(GardenSummary(
-            id=garden.id,
-            name=garden.name,
-            description=garden.description,
-            zip_code=garden.zip_code,
-            created_at=garden.created_at,
-            updated_at=garden.updated_at,
-            element_count=element_count
-        ))
-    
+        element_count = (
+            db.query(GardenElementModel)
+            .filter(GardenElementModel.garden_id == garden.id)
+            .count()
+        )
+        garden_summaries.append(
+            GardenSummary(
+                id=garden.id,
+                name=garden.name,
+                description=garden.description,
+                zip_code=garden.zip_code,
+                created_at=garden.created_at,
+                updated_at=garden.updated_at,
+                element_count=element_count,
+            )
+        )
+
     return garden_summaries
+
 
 @router.post("/gardens", response_model=Garden)
 async def create_garden(
     garden_data: GardenCreate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Create a new garden
     """
-    garden = GardenModel(
-        user_id=current_user.clerk_user_id,
-        **garden_data.dict()
-    )
-    
+    garden = GardenModel(user_id=current_user.clerk_user_id, **garden_data.dict())
+
     db.add(garden)
     db.commit()
     db.refresh(garden)
-    
+
     logger.info(f"Created garden {garden.id} for user {current_user.clerk_user_id}")
     return garden
+
 
 @router.get("/gardens/{garden_id}", response_model=Garden)
 async def get_garden(
     garden_id: int,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Get a specific garden with all its elements
     """
-    garden = db.query(GardenModel).filter(
-        GardenModel.id == garden_id,
-        GardenModel.user_id == current_user.clerk_user_id
-    ).first()
-    
+    garden = (
+        db.query(GardenModel)
+        .filter(
+            GardenModel.id == garden_id,
+            GardenModel.user_id == current_user.clerk_user_id,
+        )
+        .first()
+    )
+
     if not garden:
         raise HTTPException(status_code=404, detail="Garden not found")
-    
+
     return garden
+
 
 @router.put("/gardens/{garden_id}", response_model=Garden)
 async def update_garden(
     garden_id: int,
     garden_update: GardenUpdate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Update garden metadata and view settings
     """
-    garden = db.query(GardenModel).filter(
-        GardenModel.id == garden_id,
-        GardenModel.user_id == current_user.clerk_user_id
-    ).first()
-    
+    garden = (
+        db.query(GardenModel)
+        .filter(
+            GardenModel.id == garden_id,
+            GardenModel.user_id == current_user.clerk_user_id,
+        )
+        .first()
+    )
+
     if not garden:
         raise HTTPException(status_code=404, detail="Garden not found")
-    
+
     # Update only provided fields
     update_data = garden_update.dict(exclude_unset=True)
     for field, value in update_data.items():
         setattr(garden, field, value)
-    
+
     db.commit()
     db.refresh(garden)
-    
+
     return garden
+
 
 @router.delete("/gardens/{garden_id}")
 async def delete_garden(
     garden_id: int,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Delete a garden and all its elements
     """
-    garden = db.query(GardenModel).filter(
-        GardenModel.id == garden_id,
-        GardenModel.user_id == current_user.clerk_user_id
-    ).first()
-    
+    garden = (
+        db.query(GardenModel)
+        .filter(
+            GardenModel.id == garden_id,
+            GardenModel.user_id == current_user.clerk_user_id,
+        )
+        .first()
+    )
+
     if not garden:
         raise HTTPException(status_code=404, detail="Garden not found")
-    
+
     db.delete(garden)
     db.commit()
-    
+
     logger.info(f"Deleted garden {garden_id} for user {current_user.clerk_user_id}")
     return {"message": "Garden deleted successfully"}
+
 
 # Garden element endpoints
 @router.post("/gardens/{garden_id}/elements", response_model=GardenElement)
@@ -226,30 +565,32 @@ async def add_element(
     garden_id: int,
     element_data: GardenElementCreate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Add an element to a garden
     """
     # Verify garden ownership
-    garden = db.query(GardenModel).filter(
-        GardenModel.id == garden_id,
-        GardenModel.user_id == current_user.clerk_user_id
-    ).first()
-    
+    garden = (
+        db.query(GardenModel)
+        .filter(
+            GardenModel.id == garden_id,
+            GardenModel.user_id == current_user.clerk_user_id,
+        )
+        .first()
+    )
+
     if not garden:
         raise HTTPException(status_code=404, detail="Garden not found")
-    
-    element = GardenElementModel(
-        garden_id=garden_id,
-        **element_data.dict()
-    )
-    
+
+    element = GardenElementModel(garden_id=garden_id, **element_data.dict())
+
     db.add(element)
     db.commit()
     db.refresh(element)
-    
+
     return element
+
 
 @router.put("/gardens/{garden_id}/elements/{element_id}", response_model=GardenElement)
 async def update_element(
@@ -257,112 +598,135 @@ async def update_element(
     element_id: str,
     element_update: GardenElementUpdate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Update a garden element
     """
     # Verify garden ownership
-    garden = db.query(GardenModel).filter(
-        GardenModel.id == garden_id,
-        GardenModel.user_id == current_user.clerk_user_id
-    ).first()
-    
+    garden = (
+        db.query(GardenModel)
+        .filter(
+            GardenModel.id == garden_id,
+            GardenModel.user_id == current_user.clerk_user_id,
+        )
+        .first()
+    )
+
     if not garden:
         raise HTTPException(status_code=404, detail="Garden not found")
-    
-    element = db.query(GardenElementModel).filter(
-        GardenElementModel.garden_id == garden_id,
-        GardenElementModel.element_id == element_id
-    ).first()
-    
+
+    element = (
+        db.query(GardenElementModel)
+        .filter(
+            GardenElementModel.garden_id == garden_id,
+            GardenElementModel.element_id == element_id,
+        )
+        .first()
+    )
+
     if not element:
         raise HTTPException(status_code=404, detail="Element not found")
-    
+
     # Update only provided fields
     update_data = element_update.dict(exclude_unset=True)
     for field, value in update_data.items():
         setattr(element, field, value)
-    
+
     db.commit()
     db.refresh(element)
-    
+
     return element
+
 
 @router.delete("/gardens/{garden_id}/elements/{element_id}")
 async def delete_element(
     garden_id: int,
     element_id: str,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Delete a garden element
     """
     # Verify garden ownership
-    garden = db.query(GardenModel).filter(
-        GardenModel.id == garden_id,
-        GardenModel.user_id == current_user.clerk_user_id
-    ).first()
-    
+    garden = (
+        db.query(GardenModel)
+        .filter(
+            GardenModel.id == garden_id,
+            GardenModel.user_id == current_user.clerk_user_id,
+        )
+        .first()
+    )
+
     if not garden:
         raise HTTPException(status_code=404, detail="Garden not found")
-    
-    element = db.query(GardenElementModel).filter(
-        GardenElementModel.garden_id == garden_id,
-        GardenElementModel.element_id == element_id
-    ).first()
-    
+
+    element = (
+        db.query(GardenElementModel)
+        .filter(
+            GardenElementModel.garden_id == garden_id,
+            GardenElementModel.element_id == element_id,
+        )
+        .first()
+    )
+
     if not element:
         raise HTTPException(status_code=404, detail="Element not found")
-    
+
     db.delete(element)
     db.commit()
-    
+
     return {"message": "Element deleted successfully"}
+
 
 @router.post("/gardens/{garden_id}/save-snapshot")
 async def save_garden_snapshot(
     garden_id: int,
     snapshot: GardenSnapshot,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Save a complete garden snapshot (bulk update)
     """
     # Verify garden ownership
-    garden = db.query(GardenModel).filter(
-        GardenModel.id == garden_id,
-        GardenModel.user_id == current_user.clerk_user_id
-    ).first()
-    
+    garden = (
+        db.query(GardenModel)
+        .filter(
+            GardenModel.id == garden_id,
+            GardenModel.user_id == current_user.clerk_user_id,
+        )
+        .first()
+    )
+
     if not garden:
         raise HTTPException(status_code=404, detail="Garden not found")
-    
+
     try:
         # Update garden metadata
         if snapshot.garden:
             garden_update_data = snapshot.garden.dict(exclude_unset=True)
             for field, value in garden_update_data.items():
                 setattr(garden, field, value)
-        
+
         # Clear existing elements and add new ones
-        db.query(GardenElementModel).filter(GardenElementModel.garden_id == garden_id).delete()
-        
+        db.query(GardenElementModel).filter(
+            GardenElementModel.garden_id == garden_id
+        ).delete()
+
         # Add new elements
         for element_data in snapshot.elements:
-            element = GardenElementModel(
-                garden_id=garden_id,
-                **element_data.dict()
-            )
+            element = GardenElementModel(garden_id=garden_id, **element_data.dict())
             db.add(element)
-        
+
         db.commit()
-        
-        logger.info(f"Saved snapshot for garden {garden_id} with {len(snapshot.elements)} elements")
+
+        logger.info(
+            f"Saved snapshot for garden {garden_id} with {len(snapshot.elements)} elements"
+        )
         return {"message": "Garden snapshot saved successfully"}
-        
+
     except Exception as e:
         db.rollback()
         logger.error(f"Error saving garden snapshot: {e}")
@@ -377,10 +741,14 @@ async def list_notes(
     db: Session = Depends(get_db),
 ):
     """Get all notes for a garden"""
-    garden = db.query(GardenModel).filter(
-        GardenModel.id == garden_id,
-        GardenModel.user_id == current_user.clerk_user_id,
-    ).first()
+    garden = (
+        db.query(GardenModel)
+        .filter(
+            GardenModel.id == garden_id,
+            GardenModel.user_id == current_user.clerk_user_id,
+        )
+        .first()
+    )
 
     if not garden:
         raise HTTPException(status_code=404, detail="Garden not found")
@@ -402,10 +770,14 @@ async def create_note(
     db: Session = Depends(get_db),
 ):
     """Create a note for a garden"""
-    garden = db.query(GardenModel).filter(
-        GardenModel.id == garden_id,
-        GardenModel.user_id == current_user.clerk_user_id,
-    ).first()
+    garden = (
+        db.query(GardenModel)
+        .filter(
+            GardenModel.id == garden_id,
+            GardenModel.user_id == current_user.clerk_user_id,
+        )
+        .first()
+    )
 
     if not garden:
         raise HTTPException(status_code=404, detail="Garden not found")

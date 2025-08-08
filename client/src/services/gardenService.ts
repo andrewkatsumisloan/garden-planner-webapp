@@ -108,6 +108,83 @@ class GardenService {
     }
   }
 
+  async getGardenRecommendations(
+    gardenId: number
+  ): Promise<import('../types/garden').PlantRecommendations> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/garden/gardens/${gardenId}/recommendations`,
+      {
+        headers: await this.getAuthHeaders(),
+      }
+    );
+    if (!response.ok) {
+      throw new Error('Failed to fetch recommendations');
+    }
+    const json = await response.json();
+    return json.data.recommendedPlants;
+  }
+
+  async generateGardenRecommendations(
+    gardenId: number,
+    forceRefresh = false
+  ): Promise<import('../types/garden').PlantRecommendations> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/garden/gardens/${gardenId}/recommendations`,
+      {
+        method: 'POST',
+        headers: await this.getAuthHeaders(),
+        body: JSON.stringify({ force_refresh: forceRefresh }),
+      }
+    );
+    if (!response.ok) {
+      throw new Error('Failed to generate recommendations');
+    }
+    const json = await response.json();
+    return json.data.recommendedPlants;
+  }
+
+  async requestMoreRecommendations(
+    gardenId: number,
+    excludeBotanicalNames: string[],
+    countPerCategory = 3
+  ): Promise<import('../types/garden').PlantRecommendations> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/garden/gardens/${gardenId}/recommendations/more`,
+      {
+        method: 'POST',
+        headers: await this.getAuthHeaders(),
+        body: JSON.stringify({
+          exclude_botanical_names: excludeBotanicalNames,
+          count_per_category: countPerCategory,
+        }),
+      }
+    );
+    if (!response.ok) {
+      throw new Error('Failed to get more recommendations');
+    }
+    const json = await response.json();
+    return json.data.recommendedPlants;
+  }
+
+  async askGardenQuestion(
+    gardenId: number,
+    question: string
+  ): Promise<string> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/garden/gardens/${gardenId}/ask`,
+      {
+        method: 'POST',
+        headers: await this.getAuthHeaders(),
+        body: JSON.stringify({ question }),
+      }
+    );
+    if (!response.ok) {
+      throw new Error('Failed to get answer');
+    }
+    const json = await response.json();
+    return json.answer as string;
+  }
+
   async listNotes(gardenId: number): Promise<GardenNote[]> {
     const response = await fetch(`${API_BASE_URL}/api/v1/garden/gardens/${gardenId}/notes`, {
       headers: await this.getAuthHeaders(),

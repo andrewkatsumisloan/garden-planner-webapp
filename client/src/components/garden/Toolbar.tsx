@@ -1,13 +1,21 @@
-import { useState } from 'react';
-import { MousePointer, Square, Type, Save, Clock, FolderOpen, StickyNote, Check } from 'lucide-react';
-import { Button } from '../ui/button';
+import { useState } from "react";
+import {
+  MousePointer,
+  Square,
+  Save,
+  Clock,
+  FolderOpen,
+  StickyNote,
+  Check,
+} from "lucide-react";
+import { Button } from "../ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '../ui/dropdown-menu';
-import { Tool, StructureShape } from '../../types/garden';
+} from "../ui/dropdown-menu";
+import { Tool, StructureShape } from "../../types/garden";
 
 interface ToolbarProps {
   activeTool: Tool;
@@ -19,6 +27,8 @@ interface ToolbarProps {
   gardenName?: string;
   onShowGardens?: () => void;
   onShowNotes?: () => void;
+  showPlantSpacing?: boolean;
+  onTogglePlantSpacing?: () => void;
 }
 
 export function Toolbar({
@@ -31,27 +41,29 @@ export function Toolbar({
   gardenName,
   onShowGardens,
   onShowNotes,
+  showPlantSpacing = false,
+  onTogglePlantSpacing,
 }: ToolbarProps) {
   const [shapeMenuOpen, setShapeMenuOpen] = useState(false);
   return (
     <div className="flex items-center gap-2 p-4 bg-white border-b border-gray-200">
       <div className="flex items-center gap-1">
         <Button
-          variant={activeTool === 'select' ? 'default' : 'outline'}
+          variant={activeTool === "select" ? "default" : "outline"}
           size="sm"
-          onClick={() => onToolChange('select')}
+          onClick={() => onToolChange("select")}
           className="flex items-center gap-2"
         >
           <MousePointer className="h-4 w-4" />
           Select (V)
         </Button>
-        
+
         <DropdownMenu open={shapeMenuOpen} onOpenChange={setShapeMenuOpen}>
           <DropdownMenuTrigger asChild>
             <Button
-              variant={activeTool === 'structure' ? 'default' : 'outline'}
+              variant={activeTool === "structure" ? "default" : "outline"}
               size="sm"
-              onClick={() => onToolChange('structure')}
+              onClick={() => onToolChange("structure")}
               className="flex items-center gap-2"
               onMouseEnter={() => setShapeMenuOpen(true)}
             >
@@ -65,28 +77,32 @@ export function Toolbar({
             onMouseEnter={() => setShapeMenuOpen(true)}
             onMouseLeave={() => setShapeMenuOpen(false)}
           >
-            <DropdownMenuItem onClick={() => onStructureShapeChange('rectangle')}>
+            <DropdownMenuItem
+              onClick={() => {
+                onToolChange("structure");
+                onStructureShapeChange("rectangle");
+              }}
+            >
               Rectangle
-              {structureShape === 'rectangle' && <Check className="ml-auto h-4 w-4" />}
+              {structureShape === "rectangle" && (
+                <Check className="ml-auto h-4 w-4" />
+              )}
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onStructureShapeChange('ellipse')}>
+            <DropdownMenuItem
+              onClick={() => {
+                onToolChange("structure");
+                onStructureShapeChange("ellipse");
+              }}
+            >
               Ellipse
-              {structureShape === 'ellipse' && <Check className="ml-auto h-4 w-4" />}
+              {structureShape === "ellipse" && (
+                <Check className="ml-auto h-4 w-4" />
+              )}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        
-        <Button
-          variant={activeTool === 'text' ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => onToolChange('text')}
-          className="flex items-center gap-2"
-        >
-          <Type className="h-4 w-4" />
-          Text (T)
-        </Button>
       </div>
-      
+
       <div className="flex items-center gap-1">
         <Button
           variant="outline"
@@ -106,8 +122,16 @@ export function Toolbar({
           <StickyNote className="h-4 w-4" />
           Notes
         </Button>
+        <Button
+          variant={showPlantSpacing ? "default" : "outline"}
+          size="sm"
+          onClick={onTogglePlantSpacing}
+          className="flex items-center gap-2"
+        >
+          {showPlantSpacing ? "Hide Spacing" : "Show Spacing"}
+        </Button>
       </div>
-      
+
       {gardenName && (
         <div className="flex items-center gap-2 px-3 py-1 bg-gray-50 rounded-md">
           <span className="text-sm font-medium">{gardenName}</span>
@@ -128,7 +152,7 @@ export function Toolbar({
           </div>
         </div>
       )}
-      
+
       <div className="ml-auto text-sm text-gray-500">
         Tip: Drag on empty space to pan, or use mouse wheel to zoom
       </div>

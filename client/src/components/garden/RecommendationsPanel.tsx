@@ -10,6 +10,10 @@ interface RecommendationsPanelProps {
   recommendations: PlantRecommendations | null;
   isLoading: boolean;
   onZipCodeSubmit: (zipCode: string) => void;
+  onRequestMore?: () => void;
+  onAskQuestion?: (question: string) => Promise<string>;
+  onPlantDragStart?: (plant: Plant) => void;
+  onPlantDragEnd?: () => void;
 }
 
 const categoryLabels = {
@@ -25,11 +29,19 @@ export function RecommendationsPanel({
   recommendations,
   isLoading,
   onZipCodeSubmit,
+  onRequestMore,
+  onAskQuestion,
+  onPlantDragStart,
+  onPlantDragEnd,
 }: RecommendationsPanelProps) {
   const [inputZipCode, setInputZipCode] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
     new Set(["vegetables", "herbs"])
   );
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState<string | null>(null);
+  const [isAsking, setIsAsking] = useState(false);
+  const [askError, setAskError] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,80 +63,204 @@ export function RecommendationsPanel({
   const handleDragStart = (e: React.DragEvent, plant: Plant) => {
     e.dataTransfer.setData("application/json", JSON.stringify(plant));
     e.dataTransfer.effectAllowed = "copy";
+
+    // Notify parent so canvas can render a precise SVG ghost
+    onPlantDragStart?.(plant);
+
+    // Provide a minimal custom drag image (small green dot with faint radius)
+    try {
+      const size = 80;
+      const radius = 8;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        const cx = size / 2;
+        const cy = size / 2;
+        // Spacing halo
+        ctx.beginPath();
+        ctx.arc(cx, cy, size * 0.4, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(16, 185, 129, 0.08)"; // emerald-500 faint
+        ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = "rgba(16, 185, 129, 0.5)";
+        ctx.stroke();
+        // Center dot
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.fillStyle = "#16a34a"; // emerald-600
+        ctx.fill();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = "#15803d"; // emerald-700
+        ctx.stroke();
+      }
+      e.dataTransfer.setDragImage(canvas, size / 2, size / 2);
+    } catch {
+      // Ignore drag image errors in environments that don't support it
+    }
+  };
+  const handleDragEnd = () => {
+    onPlantDragEnd?.();
+  };
+
+  const handleAsk = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onAskQuestion || !question.trim()) return;
+    setIsAsking(true);
+    setAskError(null);
+    setAnswer(null);
+    try {
+      const resp = await onAskQuestion(question.trim());
+      setAnswer(resp);
+      setQuestion("");
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to get answer";
+      setAskError(message);
+    } finally {
+      setIsAsking(false);
+    }
   };
 
   if (!zipCode && !isLoading) {
     return (
-      <div className="p-4">
-        <h3 className="text-lg font-semibold mb-4">Plant Recommendations</h3>
-        <p className="text-gray-600 mb-4">
-          Enter your 5-digit zip code to get plant recommendations for your
-          area.
-        </p>
+      <div className="p-4 space-y-3">
+        <h3 className="text-base font-semibold">Plant Recommendations</h3>
         <form onSubmit={handleSubmit} className="flex gap-2">
           <Input
             type="text"
-            placeholder="e.g. 90210"
+            placeholder="Zip code (e.g. 90210)"
             value={inputZipCode}
             onChange={(e) => setInputZipCode(e.target.value)}
             maxLength={5}
             pattern="\d{5}"
-            className="flex-1"
+            className="flex-1 h-9"
           />
-          <Button type="submit" disabled={inputZipCode.length !== 5}>
-            Go
+          <Button type="submit" size="sm" disabled={inputZipCode.length !== 5}>
+            Get
           </Button>
         </form>
+        <p className="text-xs text-gray-500">
+          Enter your 5‑digit zip to see plants for your area.
+        </p>
       </div>
     );
   }
 
   if (isLoading) {
     return (
-      <div className="p-4">
-        <h3 className="text-lg font-semibold mb-4">Plant Recommendations</h3>
-        <div className="flex items-center justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin mr-2" />
-          <span>Getting recommendations for {zipCode}...</span>
+      <div className="p-4 space-y-3">
+        <h3 className="text-base font-semibold">Plant Recommendations</h3>
+        <div className="flex items-center justify-center py-6 text-sm text-gray-600">
+          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+          Getting recommendations{zipCode ? ` for ${zipCode}` : ""}...
         </div>
       </div>
     );
   }
 
+  // Neutral empty state: avoid scary error on initial render before fetch begins
   if (!recommendations) {
     return (
-      <div className="p-4">
-        <h3 className="text-lg font-semibold mb-4">Plant Recommendations</h3>
-        <p className="text-red-600">
-          Failed to load recommendations. Please try again.
-        </p>
-        <Button
-          onClick={() => onZipCodeSubmit("")}
-          className="mt-2"
-          variant="outline"
-        >
-          Change Location
-        </Button>
+      <div className="p-4 space-y-3">
+        <h3 className="text-base font-semibold">Plant Recommendations</h3>
+        <div className="text-sm text-gray-600">No recommendations yet.</div>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => onZipCodeSubmit(zipCode || "")} size="sm">
+            {zipCode ? "Refresh" : "Get"}
+          </Button>
+          <Button
+            onClick={() => onZipCodeSubmit("")}
+            variant="outline"
+            size="sm"
+          >
+            Change location
+          </Button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-4">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold">Recommendations</h3>
-        <Button onClick={() => onZipCodeSubmit("")} variant="outline" size="sm">
-          Change
-        </Button>
+    <div className="p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-base font-semibold leading-none">
+          Recommendations
+        </h3>
+        <div className="flex items-center gap-2">
+          {onRequestMore && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 px-3"
+              onClick={() => onRequestMore()}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> More
+                </span>
+              ) : (
+                "More"
+              )}
+            </Button>
+          )}
+          <Button
+            onClick={() => onZipCodeSubmit("")}
+            variant="outline"
+            size="sm"
+            className="h-8 px-3"
+          >
+            Change
+          </Button>
+        </div>
       </div>
 
-      <p className="text-sm text-gray-600 mb-4">
-        Showing plants for zip code: <strong>{zipCode}</strong>
+      <p className="text-sm text-gray-600">
+        Zip code: <strong>{zipCode}</strong>
       </p>
+      <p className="text-xs text-gray-500">Drag a plant into your garden.</p>
 
-      <p className="text-xs text-gray-500 mb-4">
-        Drag plants from the list below onto your garden canvas.
-      </p>
+      {onAskQuestion && (
+        <div className="border rounded-md p-3 bg-gray-50">
+          <div className="text-sm font-medium mb-2">
+            Ask the Garden Assistant
+          </div>
+          <form onSubmit={handleAsk} className="flex gap-2">
+            <Input
+              type="text"
+              placeholder="e.g. What should I plant along the north fence?"
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              className="flex-1 h-9"
+            />
+            <Button
+              type="submit"
+              size="sm"
+              disabled={isAsking || !question.trim()}
+            >
+              {isAsking ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Ask
+                </span>
+              ) : (
+                "Ask"
+              )}
+            </Button>
+          </form>
+          {askError && (
+            <div className="text-xs text-red-600 mt-2">{askError}</div>
+          )}
+          {answer && (
+            <div className="text-sm mt-3 p-3 bg-white border rounded-md">
+              {answer}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="space-y-2">
         {Object.entries(recommendations).map(([categoryKey, plants]) => {
@@ -136,11 +272,11 @@ export function RecommendationsPanel({
           return (
             <div
               key={categoryKey}
-              className="border rounded-lg overflow-hidden"
+              className="border rounded-md overflow-hidden"
             >
               <button
                 onClick={() => toggleCategory(categoryKey)}
-                className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 transition-colors"
+                className="w-full flex items-center justify-between px-3 py-2.5 bg-gray-50 hover:bg-gray-100 transition-colors"
               >
                 <span className="font-medium">{categoryLabel}</span>
                 <div className="flex items-center gap-2">
@@ -156,13 +292,14 @@ export function RecommendationsPanel({
               </button>
 
               {isExpanded && (
-                <div className="p-2 space-y-1 max-h-60 overflow-y-auto">
+                <div className="p-2 space-y-1.5 max-h-64 overflow-y-auto">
                   {plants.map((plant: Plant, index: number) => (
                     <div
                       key={`${plant.commonName}_${index}`}
                       draggable
                       onDragStart={(e) => handleDragStart(e, plant)}
-                      className="p-2 bg-white border rounded cursor-grab active:cursor-grabbing hover:bg-blue-50 hover:border-blue-200 transition-colors"
+                      onDragEnd={handleDragEnd}
+                      className="px-3 py-2 bg-white border rounded-md cursor-grab active:cursor-grabbing hover:bg-blue-50 hover:border-blue-200 transition-colors"
                     >
                       <div className="font-medium text-sm">
                         {plant.commonName}

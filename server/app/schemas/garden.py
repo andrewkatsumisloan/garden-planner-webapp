@@ -1,6 +1,7 @@
 from pydantic import BaseModel
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Dict, Any
 from datetime import datetime
+
 
 # Garden Element Schemas
 class GardenElementBase(BaseModel):
@@ -8,14 +9,14 @@ class GardenElementBase(BaseModel):
     element_type: str  # 'structure', 'plant', 'text'
     position_x: float
     position_y: float
-    
+
     # Structure fields
     width: Optional[float] = None
     height: Optional[float] = None
     label: Optional[str] = None
     color: Optional[str] = None
     shape: Optional[str] = None
-    
+
     # Plant fields
     common_name: Optional[str] = None
     botanical_name: Optional[str] = None
@@ -25,14 +26,16 @@ class GardenElementBase(BaseModel):
     mature_size: Optional[str] = None
     spacing: Optional[float] = None
     show_spacing: Optional[bool] = False
-    
+
     # Text fields
     text_content: Optional[str] = None
     font_size: Optional[int] = None
     text_color: Optional[str] = None
 
+
 class GardenElementCreate(GardenElementBase):
     pass
+
 
 class GardenElementUpdate(BaseModel):
     element_type: Optional[str] = None
@@ -55,14 +58,16 @@ class GardenElementUpdate(BaseModel):
     font_size: Optional[int] = None
     text_color: Optional[str] = None
 
+
 class GardenElement(GardenElementBase):
     id: int
     garden_id: int
     created_at: datetime
     updated_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
+
 
 # Garden Schemas
 class GardenBase(BaseModel):
@@ -76,8 +81,10 @@ class GardenBase(BaseModel):
     zoom: float = 1.0
     grid_size: int = 50
 
+
 class GardenCreate(GardenBase):
     pass
+
 
 class GardenUpdate(BaseModel):
     name: Optional[str] = None
@@ -90,6 +97,7 @@ class GardenUpdate(BaseModel):
     zoom: Optional[float] = None
     grid_size: Optional[int] = None
 
+
 class Garden(GardenBase):
     id: int
     user_id: str
@@ -97,9 +105,10 @@ class Garden(GardenBase):
     updated_at: Optional[datetime] = None
     elements: List[GardenElement] = []
     notes: List["GardenNote"] = []
-    
+
     class Config:
         from_attributes = True
+
 
 class GardenSummary(BaseModel):
     id: int
@@ -109,9 +118,10 @@ class GardenSummary(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
     element_count: int
-    
+
     class Config:
         from_attributes = True
+
 
 # Garden Note Schemas
 class GardenNoteBase(BaseModel):
@@ -130,10 +140,27 @@ class GardenNote(GardenNoteBase):
     class Config:
         from_attributes = True
 
+
 # Bulk operations
 class GardenElementsBulkUpdate(BaseModel):
     elements: List[Union[GardenElementCreate, GardenElementUpdate]]
-    
+
+
 class GardenSnapshot(BaseModel):
     garden: GardenUpdate
     elements: List[GardenElementCreate]
+
+
+# Recommendation Schemas
+class GardenRecommendationBase(BaseModel):
+    data: Dict[str, Any]
+
+
+class GardenRecommendation(GardenRecommendationBase):
+    id: int
+    garden_id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True

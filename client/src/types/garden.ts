@@ -152,4 +152,5 @@ export interface AppState {
   lastSaved: Date | null;
   isLoadingGardens: boolean;
   availableGardens: GardenSummary[];
+  showPlantSpacing: boolean;
 }

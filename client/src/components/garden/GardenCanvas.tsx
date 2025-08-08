@@ -1,6 +1,5 @@
 // ===== File: client/src/components/garden/GardenCanvas.tsx =====
 import React, { useRef, useState, useCallback, useEffect } from "react";
-import { Plus, Minus } from "lucide-react";
 import {
   CanvasState,
   CanvasElement,
@@ -10,6 +9,7 @@ import {
   PlantInstance,
   StructureShape,
 } from "../../types/garden";
+import type { Plant } from "../../types/garden";
 
 interface GardenCanvasProps {
   canvasState: CanvasState;
@@ -22,6 +22,8 @@ interface GardenCanvasProps {
   onElementUpdate: (element: CanvasElement) => void;
   onCanvasDrop: (e: React.DragEvent, position: Position) => void;
   onHistorySnapshot: () => void;
+  showPlantSpacing?: boolean;
+  draggingPlant?: Plant | null;
 }
 
 export function GardenCanvas({
@@ -35,6 +37,8 @@ export function GardenCanvas({
   onElementUpdate,
   onCanvasDrop,
   onHistorySnapshot,
+  showPlantSpacing = false,
+  draggingPlant = null,
 }: GardenCanvasProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const interactionState = useRef({
@@ -56,22 +60,54 @@ export function GardenCanvas({
 
   const getStructureMaterial = useCallback((label: string, color: string) => {
     const lowerLabel = label.toLowerCase();
-    
+
     // Determine material based on label keywords
-    if (lowerLabel.includes('wood') || lowerLabel.includes('deck') || lowerLabel.includes('fence') || 
-        lowerLabel.includes('pergola') || lowerLabel.includes('shed')) {
-      return { fill: 'url(#woodTexture)', textColor: '#ffffff', shadow: true };
-    } else if (lowerLabel.includes('concrete') || lowerLabel.includes('patio') || lowerLabel.includes('foundation') || 
-               lowerLabel.includes('wall') || lowerLabel.includes('path')) {
-      return { fill: 'url(#concreteTexture)', textColor: '#333333', shadow: true };
-    } else if (lowerLabel.includes('metal') || lowerLabel.includes('steel') || lowerLabel.includes('aluminum') || 
-               lowerLabel.includes('gate') || lowerLabel.includes('trellis')) {
-      return { fill: 'url(#metalTexture)', textColor: '#ffffff', shadow: true };
-    } else if (lowerLabel.includes('raised bed') || lowerLabel.includes('planter') || lowerLabel.includes('container')) {
-      return { fill: 'url(#plasticGradient)', textColor: '#ffffff', shadow: true };
+    if (
+      lowerLabel.includes("wood") ||
+      lowerLabel.includes("deck") ||
+      lowerLabel.includes("fence") ||
+      lowerLabel.includes("pergola") ||
+      lowerLabel.includes("shed")
+    ) {
+      return { fill: "url(#woodTexture)", textColor: "#ffffff", shadow: true };
+    } else if (
+      lowerLabel.includes("concrete") ||
+      lowerLabel.includes("patio") ||
+      lowerLabel.includes("foundation") ||
+      lowerLabel.includes("wall") ||
+      lowerLabel.includes("path")
+    ) {
+      return {
+        fill: "url(#concreteTexture)",
+        textColor: "#333333",
+        shadow: true,
+      };
+    } else if (
+      lowerLabel.includes("metal") ||
+      lowerLabel.includes("steel") ||
+      lowerLabel.includes("aluminum") ||
+      lowerLabel.includes("gate") ||
+      lowerLabel.includes("trellis")
+    ) {
+      return { fill: "url(#metalTexture)", textColor: "#ffffff", shadow: true };
+    } else if (
+      lowerLabel.includes("raised bed") ||
+      lowerLabel.includes("planter") ||
+      lowerLabel.includes("container")
+    ) {
+      return {
+        fill: "url(#plasticGradient)",
+        textColor: "#ffffff",
+        shadow: true,
+      };
     } else {
       // Default to enhanced gradient based on original color
-      return { fill: color, textColor: '#ffffff', shadow: true, customGradient: true };
+      return {
+        fill: color,
+        textColor: "#ffffff",
+        shadow: true,
+        customGradient: true,
+      };
     }
   }, []);
 
@@ -105,93 +141,73 @@ export function GardenCanvas({
   const MIN_VIEWBOX_SIZE = 200;
   const MAX_VIEWBOX_SIZE = 5000;
 
-  const handleZoom = useCallback(
-    (factor: number) => {
-      const clampedWidth = clamp(
-        viewBox.width * factor,
-        MIN_VIEWBOX_SIZE,
-        MAX_VIEWBOX_SIZE
-      );
-      const scale = clampedWidth / viewBox.width;
-      const newHeight = viewBox.height * scale;
-      const centerX = viewBox.x + viewBox.width / 2;
-      const centerY = viewBox.y + viewBox.height / 2;
-      const newX = centerX - clampedWidth / 2;
-      const newY = centerY - newHeight / 2;
-      onViewBoxChange({
-        x: newX,
-        y: newY,
-        width: clampedWidth,
-        height: newHeight,
-      });
+  // Buttons moved to parent; wheel zoom still handled below
+
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      interactionState.current.didMove = false;
+      const startPos = screenToSVG(e.clientX, e.clientY);
+
+      if (e.button === 1 || e.metaKey || e.ctrlKey) {
+        interactionState.current.isPanning = true;
+        interactionState.current.panStart = { x: e.clientX, y: e.clientY };
+        if (svgRef.current) svgRef.current.style.cursor = "grabbing";
+        e.preventDefault();
+        return;
+      }
+
+      if (e.button !== 0) return;
+
+      const target = e.target as SVGElement;
+      const elementId = target
+        .closest("[data-element-id]")
+        ?.getAttribute("data-element-id");
+
+      if (elementId) {
+        const element = elements.find((el) => el.id === elementId);
+        if (element) {
+          onHistorySnapshot();
+          interactionState.current.isDragging = true;
+          interactionState.current.dragElementId = elementId;
+          interactionState.current.dragOffset = {
+            x: startPos.x - element.position.x,
+            y: startPos.y - element.position.y,
+          };
+          onSelectionChange(elementId);
+          e.preventDefault();
+          return;
+        }
+      }
+
+      if (activeTool === "select") {
+        interactionState.current.isPanning = true;
+        interactionState.current.panStart = { x: e.clientX, y: e.clientY };
+        if (svgRef.current) svgRef.current.style.cursor = "grabbing";
+        e.preventDefault();
+        return;
+      }
+
+      if (activeTool === "structure") {
+        interactionState.current.isDrawing = true;
+        interactionState.current.drawStart = snapToGrid(startPos);
+        e.preventDefault();
+      }
     },
-    [viewBox, onViewBoxChange]
+    [
+      activeTool,
+      screenToSVG,
+      snapToGrid,
+      elements,
+      onSelectionChange,
+      onHistorySnapshot,
+    ]
   );
-
-    const handleMouseDown = useCallback(
-      (e: React.MouseEvent) => {
-        interactionState.current.didMove = false;
-        const startPos = screenToSVG(e.clientX, e.clientY);
-
-        if (e.button === 1 || e.metaKey || e.ctrlKey) {
-          interactionState.current.isPanning = true;
-          interactionState.current.panStart = { x: e.clientX, y: e.clientY };
-          if (svgRef.current) svgRef.current.style.cursor = "grabbing";
-          e.preventDefault();
-          return;
-        }
-
-        if (e.button !== 0) return;
-
-        const target = e.target as SVGElement;
-        const elementId = target
-          .closest("[data-element-id]")
-          ?.getAttribute("data-element-id");
-
-        if (elementId) {
-          const element = elements.find((el) => el.id === elementId);
-          if (element) {
-            onHistorySnapshot();
-            interactionState.current.isDragging = true;
-            interactionState.current.dragElementId = elementId;
-            interactionState.current.dragOffset = {
-              x: startPos.x - element.position.x,
-              y: startPos.y - element.position.y,
-            };
-            onSelectionChange(elementId);
-            e.preventDefault();
-            return;
-          }
-        }
-
-        if (activeTool === "select") {
-          interactionState.current.isPanning = true;
-          interactionState.current.panStart = { x: e.clientX, y: e.clientY };
-          if (svgRef.current) svgRef.current.style.cursor = "grabbing";
-          e.preventDefault();
-          return;
-        }
-
-        if (activeTool === "structure") {
-          interactionState.current.isDrawing = true;
-          interactionState.current.drawStart = snapToGrid(startPos);
-          e.preventDefault();
-        }
-      },
-      [
-        activeTool,
-        screenToSVG,
-        snapToGrid,
-        elements,
-        onSelectionChange,
-        onHistorySnapshot,
-      ]
-    );
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
       interactionState.current.didMove = true;
-      const { isPanning, panStart, isDragging, dragElementId, dragOffset } = interactionState.current;
+      const { isPanning, panStart, isDragging, dragElementId, dragOffset } =
+        interactionState.current;
 
       if (isPanning) {
         const dx = e.clientX - panStart.x;
@@ -212,8 +228,8 @@ export function GardenCanvas({
           x: currentPos.x - dragOffset.x,
           y: currentPos.y - dragOffset.y,
         });
-        
-        const element = elements.find(el => el.id === dragElementId);
+
+        const element = elements.find((el) => el.id === dragElementId);
         if (element) {
           const updatedElement = {
             ...element,
@@ -226,12 +242,20 @@ export function GardenCanvas({
       const currentPos = screenToSVG(e.clientX, e.clientY);
       setCurrentMousePos(snapToGrid(currentPos));
     },
-    [onViewBoxChange, screenToSVG, snapToGrid, viewBox, elements, onElementUpdate]
+    [
+      onViewBoxChange,
+      screenToSVG,
+      snapToGrid,
+      viewBox,
+      elements,
+      onElementUpdate,
+    ]
   );
 
   const handleMouseUp = useCallback(
     (e: React.MouseEvent) => {
-      const { isDrawing, drawStart, didMove, isDragging } = interactionState.current;
+      const { isDrawing, drawStart, didMove, isDragging } =
+        interactionState.current;
 
       if (interactionState.current.isPanning) {
         interactionState.current.isPanning = false;
@@ -264,9 +288,14 @@ export function GardenCanvas({
           };
           onElementAdd(newStructure);
           onSelectionChange(newStructure.id);
+        } else {
+          // Treat small click as background click: clear selection
+          onSelectionChange(null);
         }
         interactionState.current.isDrawing = false;
-      } else if (activeTool === "select" && !didMove && !isDragging) {
+      } else if (!didMove && !isDragging) {
+        // On mouse up without dragging/drawing, select element if any;
+        // otherwise clear selection (background click)
         const target = e.target as SVGElement;
         const elementId = target
           .closest("[data-element-id]")
@@ -301,7 +330,7 @@ export function GardenCanvas({
 
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const zoomFactor = e.deltaY > 0 ? 1.1 : 0.9;
+      const zoomFactor = e.deltaY > 0 ? 1.03 : 0.97;
       const clampedWidth = clamp(
         viewBox.width * zoomFactor,
         MIN_VIEWBOX_SIZE,
@@ -328,12 +357,18 @@ export function GardenCanvas({
     <div className="relative w-full h-full bg-gray-50 overflow-hidden">
       <svg
         ref={svgRef}
-        className="w-full h-full"
+        className="w-full h-full relative z-0"
         viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
+        preserveAspectRatio="xMidYMid slice"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onDragOver={(e) => e.preventDefault()}
+        onDragOver={(e) => {
+          e.preventDefault();
+          // Track cursor during external drag to position the ghost
+          const pos = screenToSVG(e.clientX, e.clientY);
+          setCurrentMousePos(snapToGrid(pos));
+        }}
         onDrop={handleDrop}
         onMouseLeave={() => {
           interactionState.current.isDrawing = false;
@@ -352,11 +387,12 @@ export function GardenCanvas({
             <path
               d={`M ${gridSize} 0 L 0 0 0 ${gridSize}`}
               fill="none"
-              stroke="#e0e0e0"
-              strokeWidth="0.5"
+              stroke="#d6d6d6"
+              strokeWidth={1}
+              vectorEffect="non-scaling-stroke"
             />
           </pattern>
-          
+
           {/* Structure gradients and patterns */}
           <linearGradient id="woodGradient" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor="#d2691e" />
@@ -364,65 +400,147 @@ export function GardenCanvas({
             <stop offset="70%" stopColor="#a0522d" />
             <stop offset="100%" stopColor="#654321" />
           </linearGradient>
-          
-          <linearGradient id="concreteGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+
+          <linearGradient
+            id="concreteGradient"
+            x1="0%"
+            y1="0%"
+            x2="100%"
+            y2="100%"
+          >
             <stop offset="0%" stopColor="#f5f5f5" />
             <stop offset="30%" stopColor="#d3d3d3" />
             <stop offset="70%" stopColor="#c0c0c0" />
             <stop offset="100%" stopColor="#a9a9a9" />
           </linearGradient>
-          
-          <linearGradient id="metalGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+
+          <linearGradient
+            id="metalGradient"
+            x1="0%"
+            y1="0%"
+            x2="100%"
+            y2="100%"
+          >
             <stop offset="0%" stopColor="#e8e8e8" />
             <stop offset="25%" stopColor="#c0c0c0" />
             <stop offset="50%" stopColor="#a8a8a8" />
             <stop offset="75%" stopColor="#909090" />
             <stop offset="100%" stopColor="#787878" />
           </linearGradient>
-          
-          <linearGradient id="plasticGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+
+          <linearGradient
+            id="plasticGradient"
+            x1="0%"
+            y1="0%"
+            x2="100%"
+            y2="100%"
+          >
             <stop offset="0%" stopColor="#2d5a27" />
             <stop offset="30%" stopColor="#1e3a20" />
             <stop offset="70%" stopColor="#0f2419" />
             <stop offset="100%" stopColor="#0a1a0f" />
           </linearGradient>
-          
+
           {/* Shadow filter */}
-          <filter id="structureShadow" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="3" dy="3" stdDeviation="2" floodColor="rgba(0,0,0,0.3)" />
+          <filter
+            id="structureShadow"
+            x="-20%"
+            y="-20%"
+            width="140%"
+            height="140%"
+          >
+            <feDropShadow
+              dx="3"
+              dy="3"
+              stdDeviation="2"
+              floodColor="rgba(0,0,0,0.3)"
+            />
           </filter>
-          
+
           {/* Wood texture pattern */}
-          <pattern id="woodTexture" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+          <pattern
+            id="woodTexture"
+            x="0"
+            y="0"
+            width="20"
+            height="20"
+            patternUnits="userSpaceOnUse"
+          >
             <rect width="20" height="20" fill="url(#woodGradient)" />
-            <path d="M0,5 Q10,3 20,5 M0,10 Q10,8 20,10 M0,15 Q10,13 20,15" 
-                  stroke="rgba(101,67,33,0.3)" strokeWidth="0.5" fill="none" />
+            <path
+              d="M0,5 Q10,3 20,5 M0,10 Q10,8 20,10 M0,15 Q10,13 20,15"
+              stroke="rgba(101,67,33,0.3)"
+              strokeWidth="0.5"
+              fill="none"
+            />
           </pattern>
-          
+
           {/* Concrete texture pattern */}
-          <pattern id="concreteTexture" x="0" y="0" width="15" height="15" patternUnits="userSpaceOnUse">
+          <pattern
+            id="concreteTexture"
+            x="0"
+            y="0"
+            width="15"
+            height="15"
+            patternUnits="userSpaceOnUse"
+          >
             <rect width="15" height="15" fill="url(#concreteGradient)" />
             <circle cx="3" cy="3" r="0.5" fill="rgba(128,128,128,0.4)" />
             <circle cx="8" cy="7" r="0.3" fill="rgba(128,128,128,0.3)" />
             <circle cx="12" cy="4" r="0.4" fill="rgba(128,128,128,0.3)" />
             <circle cx="6" cy="11" r="0.3" fill="rgba(128,128,128,0.4)" />
           </pattern>
-          
+
           {/* Metal texture pattern */}
-          <pattern id="metalTexture" x="0" y="0" width="25" height="25" patternUnits="userSpaceOnUse">
+          <pattern
+            id="metalTexture"
+            x="0"
+            y="0"
+            width="25"
+            height="25"
+            patternUnits="userSpaceOnUse"
+          >
             <rect width="25" height="25" fill="url(#metalGradient)" />
-            <line x1="0" y1="5" x2="25" y2="5" stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" />
-            <line x1="0" y1="10" x2="25" y2="10" stroke="rgba(0,0,0,0.1)" strokeWidth="0.5" />
-            <line x1="0" y1="15" x2="25" y2="15" stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" />
-            <line x1="0" y1="20" x2="25" y2="20" stroke="rgba(0,0,0,0.1)" strokeWidth="0.5" />
+            <line
+              x1="0"
+              y1="5"
+              x2="25"
+              y2="5"
+              stroke="rgba(255,255,255,0.2)"
+              strokeWidth="0.5"
+            />
+            <line
+              x1="0"
+              y1="10"
+              x2="25"
+              y2="10"
+              stroke="rgba(0,0,0,0.1)"
+              strokeWidth="0.5"
+            />
+            <line
+              x1="0"
+              y1="15"
+              x2="25"
+              y2="15"
+              stroke="rgba(255,255,255,0.2)"
+              strokeWidth="0.5"
+            />
+            <line
+              x1="0"
+              y1="20"
+              x2="25"
+              y2="20"
+              stroke="rgba(0,0,0,0.1)"
+              strokeWidth="0.5"
+            />
           </pattern>
         </defs>
         <rect
-          width="100%"
-          height="100%"
-          fill="url(#grid)"
           x={viewBox.x}
           y={viewBox.y}
+          width={viewBox.width}
+          height={viewBox.height}
+          fill="url(#grid)"
         />
 
         <g className="elements">
@@ -433,7 +551,8 @@ export function GardenCanvas({
             if (element.type === "structure") {
               const el = element as Structure;
               const material = getStructureMaterial(el.label, el.color);
-              const cornerRadius = Math.min(el.size.width, el.size.height) * 0.05; // 5% of smallest dimension
+              const cornerRadius =
+                Math.min(el.size.width, el.size.height) * 0.05; // 5% of smallest dimension
               const fontSize = 14 * Math.sqrt(viewBox.width / 1000);
 
               if (el.shape === "ellipse") {
@@ -445,7 +564,9 @@ export function GardenCanvas({
                   <g
                     key={el.id}
                     data-element-id={el.id}
-                    className={activeTool === "select" ? "cursor-move" : "cursor-pointer"}
+                    className={
+                      activeTool === "select" ? "cursor-move" : "cursor-pointer"
+                    }
                   >
                     <ellipse
                       cx={cx}
@@ -453,10 +574,14 @@ export function GardenCanvas({
                       rx={rx}
                       ry={ry}
                       fill={material.fill}
-                      filter={material.shadow ? "url(#structureShadow)" : undefined}
+                      filter={
+                        material.shadow ? "url(#structureShadow)" : undefined
+                      }
                       stroke={isSelected ? selectionStroke : "rgba(0,0,0,0.1)"}
                       strokeWidth={
-                        isSelected ? 3 * Math.sqrt(viewBox.width / 1000) : 1 * Math.sqrt(viewBox.width / 1000)
+                        isSelected
+                          ? 3 * Math.sqrt(viewBox.width / 1000)
+                          : 1 * Math.sqrt(viewBox.width / 1000)
                       }
                     />
                     <text
@@ -468,8 +593,11 @@ export function GardenCanvas({
                       fontSize={fontSize}
                       className="pointer-events-none font-semibold"
                       style={{
-                        textShadow: material.textColor === '#ffffff' ? '1px 1px 2px rgba(0,0,0,0.7)' : '1px 1px 2px rgba(255,255,255,0.7)',
-                        filter: 'drop-shadow(1px 1px 1px rgba(0,0,0,0.3))'
+                        textShadow:
+                          material.textColor === "#ffffff"
+                            ? "1px 1px 2px rgba(0,0,0,0.7)"
+                            : "1px 1px 2px rgba(255,255,255,0.7)",
+                        filter: "drop-shadow(1px 1px 1px rgba(0,0,0,0.3))",
                       }}
                     >
                       {el.label}
@@ -482,7 +610,9 @@ export function GardenCanvas({
                 <g
                   key={el.id}
                   data-element-id={el.id}
-                  className={activeTool === "select" ? "cursor-move" : "cursor-pointer"}
+                  className={
+                    activeTool === "select" ? "cursor-move" : "cursor-pointer"
+                  }
                 >
                   {/* Main structure with rounded corners and texture */}
                   <rect
@@ -493,10 +623,14 @@ export function GardenCanvas({
                     rx={cornerRadius}
                     ry={cornerRadius}
                     fill={material.fill}
-                    filter={material.shadow ? "url(#structureShadow)" : undefined}
+                    filter={
+                      material.shadow ? "url(#structureShadow)" : undefined
+                    }
                     stroke={isSelected ? selectionStroke : "rgba(0,0,0,0.1)"}
                     strokeWidth={
-                      isSelected ? 3 * Math.sqrt(viewBox.width / 1000) : 1 * Math.sqrt(viewBox.width / 1000)
+                      isSelected
+                        ? 3 * Math.sqrt(viewBox.width / 1000)
+                        : 1 * Math.sqrt(viewBox.width / 1000)
                     }
                   />
 
@@ -522,8 +656,11 @@ export function GardenCanvas({
                     fontSize={fontSize}
                     className="pointer-events-none font-semibold"
                     style={{
-                      textShadow: material.textColor === '#ffffff' ? '1px 1px 2px rgba(0,0,0,0.7)' : '1px 1px 2px rgba(255,255,255,0.7)',
-                      filter: 'drop-shadow(1px 1px 1px rgba(0,0,0,0.3))'
+                      textShadow:
+                        material.textColor === "#ffffff"
+                          ? "1px 1px 2px rgba(0,0,0,0.7)"
+                          : "1px 1px 2px rgba(255,255,255,0.7)",
+                      filter: "drop-shadow(1px 1px 1px rgba(0,0,0,0.3))",
                     }}
                   >
                     {el.label}
@@ -539,15 +676,25 @@ export function GardenCanvas({
                 <g
                   key={el.id}
                   data-element-id={el.id}
-                  className={activeTool === "select" ? "cursor-move" : "cursor-pointer"}
+                  className={
+                    activeTool === "select" ? "cursor-move" : "cursor-pointer"
+                  }
                 >
-                  {isSelected && (
+                  {(showPlantSpacing || isSelected) && (
                     <circle
                       cx={el.position.x}
                       cy={el.position.y}
                       r={spacingRadius}
-                      fill="rgba(37, 99, 235, 0.1)"
-                      stroke="rgba(37, 99, 235, 0.4)"
+                      fill={
+                        showPlantSpacing
+                          ? "rgba(16, 185, 129, 0.08)"
+                          : "rgba(37, 99, 235, 0.1)"
+                      }
+                      stroke={
+                        showPlantSpacing
+                          ? "rgba(16, 185, 129, 0.5)"
+                          : "rgba(37, 99, 235, 0.4)"
+                      }
                       strokeWidth={1 * Math.sqrt(viewBox.width / 1000)}
                       strokeDasharray="4,4"
                     />
@@ -587,6 +734,37 @@ export function GardenCanvas({
           })}
         </g>
 
+        {/* Drag ghost for plants: green dot with faint spacing radius */}
+        {draggingPlant && (
+          <g pointerEvents="none">
+            {(() => {
+              const radius = 10 * Math.sqrt(viewBox.width / 1000);
+              const spacingRadius = (draggingPlant.spacing * gridSize) / 2;
+              return (
+                <>
+                  <circle
+                    cx={currentMousePos.x}
+                    cy={currentMousePos.y}
+                    r={spacingRadius}
+                    fill="rgba(16, 185, 129, 0.08)"
+                    stroke="rgba(16, 185, 129, 0.5)"
+                    strokeWidth={1 * Math.sqrt(viewBox.width / 1000)}
+                    strokeDasharray="4,4"
+                  />
+                  <circle
+                    cx={currentMousePos.x}
+                    cy={currentMousePos.y}
+                    r={radius}
+                    fill="#16a34a"
+                    stroke="#15803d"
+                    strokeWidth={1.5 * Math.sqrt(viewBox.width / 1000)}
+                  />
+                </>
+              );
+            })()}
+          </g>
+        )}
+
         {interactionState.current.isDrawing && activeTool === "structure" && (
           <rect
             x={Math.min(
@@ -603,14 +781,26 @@ export function GardenCanvas({
             height={Math.abs(
               currentMousePos.y - interactionState.current.drawStart.y
             )}
-            rx={Math.min(
-              Math.abs(currentMousePos.x - interactionState.current.drawStart.x),
-              Math.abs(currentMousePos.y - interactionState.current.drawStart.y)
-            ) * 0.05}
-            ry={Math.min(
-              Math.abs(currentMousePos.x - interactionState.current.drawStart.x),
-              Math.abs(currentMousePos.y - interactionState.current.drawStart.y)
-            ) * 0.05}
+            rx={
+              Math.min(
+                Math.abs(
+                  currentMousePos.x - interactionState.current.drawStart.x
+                ),
+                Math.abs(
+                  currentMousePos.y - interactionState.current.drawStart.y
+                )
+              ) * 0.05
+            }
+            ry={
+              Math.min(
+                Math.abs(
+                  currentMousePos.x - interactionState.current.drawStart.x
+                ),
+                Math.abs(
+                  currentMousePos.y - interactionState.current.drawStart.y
+                )
+              ) * 0.05
+            }
             fill="rgba(210, 105, 30, 0.2)"
             stroke="#d2691e"
             strokeWidth={2 * Math.sqrt(viewBox.width / 1000)}
@@ -620,20 +810,7 @@ export function GardenCanvas({
         )}
       </svg>
 
-      <div className="absolute bottom-4 right-4 flex flex-col space-y-2">
-        <button
-          className="w-8 h-8 rounded-full bg-white shadow flex items-center justify-center"
-          onClick={() => handleZoom(0.9)}
-        >
-          <Plus className="w-4 h-4" />
-        </button>
-        <button
-          className="w-8 h-8 rounded-full bg-white shadow flex items-center justify-center"
-          onClick={() => handleZoom(1.1)}
-        >
-          <Minus className="w-4 h-4" />
-        </button>
-      </div>
+      {/* Zoom controls moved to parent overlay to avoid clipping/stacking issues */}
     </div>
   );
 }

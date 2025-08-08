@@ -110,11 +110,79 @@
 }
 
 @layer base {
+
+  /* Keep borders themed, but do not force outlines on every element */
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
   }
 
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+
+  /* Subtle grid background powered by CSS gradients */
+  .bg-grid-pattern {
+    --grid-size: 28px;
+    --grid-line: color-mix(in oklch, var(--ring) 35%, transparent);
+    background-image:
+      linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+    background-size: var(--grid-size) var(--grid-size);
+  }
+
+  /* Fade the edges of any element for a softer focus */
+  .mask-fade-edges {
+    -webkit-mask-image: radial-gradient(60% 60% at 50% 40%, #000 55%, transparent 100%);
+    mask-image: radial-gradient(60% 60% at 50% 40%, #000 55%, transparent 100%);
+  }
+
+  /* Gently pan the background grid for a living feel */
+  .animate-grid-pan {
+    animation: grid-pan 40s linear infinite;
+  }
+
+  @keyframes grid-pan {
+    from {
+      background-position: 0 0, 0 0;
+    }
+
+    to {
+      background-position: var(--grid-size) var(--grid-size), var(--grid-size) var(--grid-size);
+    }
+  }
+
+  /* Small floating animation for decorative items */
+  .animate-float-slow {
+    animation: float-slow 6s ease-in-out infinite;
+  }
+
+  @keyframes float-slow {
+
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+
+    50% {
+      transform: translateY(-6px);
+    }
+  }
+
+  /* Simple marquee animation for decorative rows */
+  .animate-marquee {
+    animation: marquee 30s linear infinite;
+  }
+
+  @keyframes marquee {
+    from {
+      transform: translateX(0);
+    }
+
+    to {
+      transform: translateX(-50%);
+    }
   }
 }
