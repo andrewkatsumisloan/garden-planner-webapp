@@ -30,7 +30,7 @@ function StructureMesh({
 }) {
   const width = el.size.width || 0.001;
   const depth = el.size.height || 0.001;
-  const height = el.zHeight ?? 0.5;
+  const height = el.zHeight ?? 1;
 
   const [x, , z] = toWorldPosition(
     el.position.x + width / 2,
@@ -213,6 +213,7 @@ export function GardenCanvas3D({
       <Canvas
         shadows
         dpr={[1, 2]}
+        gl={{ antialias: true, logarithmicDepthBuffer: true }}
         camera={{
           position: [
             center.x + groundSize * 0.9,
@@ -255,7 +256,7 @@ export function GardenCanvas3D({
         {/* Grid helper */}
         <gridHelper
           args={[groundSize * 2, Math.max(10, Math.floor(groundSize / 10))]}
-          position={[center.x, 0.01, center.z]}
+          position={[center.x, 0.05, center.z]}
         />
 
         {/* Elements */}
