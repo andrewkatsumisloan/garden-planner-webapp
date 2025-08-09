@@ -13,6 +13,7 @@ class GardenElementBase(BaseModel):
     # Structure fields
     width: Optional[float] = None
     height: Optional[float] = None
+    z_height: Optional[float] = None
     label: Optional[str] = None
     color: Optional[str] = None
     shape: Optional[str] = None
@@ -43,6 +44,7 @@ class GardenElementUpdate(BaseModel):
     position_y: Optional[float] = None
     width: Optional[float] = None
     height: Optional[float] = None
+    z_height: Optional[float] = None
     label: Optional[str] = None
     color: Optional[str] = None
     shape: Optional[str] = None

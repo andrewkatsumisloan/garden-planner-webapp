@@ -44,6 +44,8 @@ export interface Structure extends CanvasObject {
   label: string;
   color: string;
   shape: StructureShape;
+  // Vertical height in feet for 3D mode extrusion
+  zHeight?: number;
 }
 
 export interface PlantInstance extends CanvasObject {
@@ -110,6 +112,7 @@ export interface SavedGardenElement {
   position_y: number;
   width?: number;
   height?: number;
+  z_height?: number;
   label?: string;
   color?: string;
    shape?: string;
@@ -153,4 +156,6 @@ export interface AppState {
   isLoadingGardens: boolean;
   availableGardens: GardenSummary[];
   showPlantSpacing: boolean;
+  // Whether to render in 3D mode
+  is3DMode: boolean;
 }

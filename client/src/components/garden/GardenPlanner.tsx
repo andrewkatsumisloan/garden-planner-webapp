@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useUser, useAuth } from "@clerk/clerk-react";
 import { GardenCanvas } from "./GardenCanvas";
+import { GardenCanvas3D } from "./GardenCanvas3D";
 import { Toolbar } from "./Toolbar";
 import { RecommendationsPanel } from "./RecommendationsPanel";
 import { PropertiesPanel } from "./PropertiesPanel";
@@ -42,6 +43,7 @@ const initialAppState: AppState = {
   isLoadingGardens: false,
   availableGardens: [],
   showPlantSpacing: false,
+  is3DMode: false,
 };
 
 export function GardenPlanner() {
@@ -711,78 +713,96 @@ export function GardenPlanner() {
             showPlantSpacing: !prev.showPlantSpacing,
           }))
         }
+        is3DMode={appState.is3DMode}
+        onToggle3DMode={() =>
+          setAppState((prev) => ({
+            ...prev,
+            is3DMode: !prev.is3DMode,
+          }))
+        }
       />
 
       <div className="flex-1 flex overflow-hidden">
         <div className="flex-1 relative">
-          <GardenCanvas
-            canvasState={appState.canvas}
-            activeTool={appState.activeTool}
-            structureShape={appState.structureShape}
-            selectedElementId={appState.canvas.selectedElementId}
-            onSelectionChange={handleSelectionChange}
-            onViewBoxChange={handleViewBoxChange}
-            onElementAdd={handleElementAdd}
-            onElementUpdate={handleElementUpdate}
-            onCanvasDrop={handleCanvasDrop}
-            onHistorySnapshot={handleHistorySnapshot}
-            showPlantSpacing={appState.showPlantSpacing}
-            draggingPlant={draggingPlant}
-          />
+          {appState.is3DMode ? (
+            <GardenCanvas3D
+              canvasState={appState.canvas}
+              selectedElementId={appState.canvas.selectedElementId}
+              onSelectionChange={handleSelectionChange}
+            />
+          ) : (
+            <GardenCanvas
+              canvasState={appState.canvas}
+              activeTool={appState.activeTool}
+              structureShape={appState.structureShape}
+              selectedElementId={appState.canvas.selectedElementId}
+              onSelectionChange={handleSelectionChange}
+              onViewBoxChange={handleViewBoxChange}
+              onElementAdd={handleElementAdd}
+              onElementUpdate={handleElementUpdate}
+              onCanvasDrop={handleCanvasDrop}
+              onHistorySnapshot={handleHistorySnapshot}
+              showPlantSpacing={appState.showPlantSpacing}
+              draggingPlant={draggingPlant}
+              is3DMode={false}
+            />
+          )}
 
-          {/* Overlay zoom controls as sibling to avoid clipping/stacking */}
-          <div className="pointer-events-none absolute inset-0">
-            <div className="pointer-events-auto fixed bottom-6 left-6 z-50 flex flex-col space-y-2">
-              <button
-                className="w-9 h-9 rounded-full bg-white shadow flex items-center justify-center border"
-                onClick={() => {
-                  const { viewBox } = appState.canvas;
-                  const clampedWidth = Math.max(
-                    200,
-                    Math.min(5000, viewBox.width * 0.97)
-                  );
-                  const scale = clampedWidth / viewBox.width;
-                  const newHeight = viewBox.height * scale;
-                  const centerX = viewBox.x + viewBox.width / 2;
-                  const centerY = viewBox.y + viewBox.height / 2;
-                  handleViewBoxChange({
-                    x: centerX - clampedWidth / 2,
-                    y: centerY - newHeight / 2,
-                    width: clampedWidth,
-                    height: newHeight,
-                  });
-                }}
-                aria-label="Zoom in"
-                title="Zoom in"
-              >
-                +
-              </button>
-              <button
-                className="w-9 h-9 rounded-full bg-white shadow flex items-center justify-center border"
-                onClick={() => {
-                  const { viewBox } = appState.canvas;
-                  const clampedWidth = Math.max(
-                    200,
-                    Math.min(5000, viewBox.width * 1.03)
-                  );
-                  const scale = clampedWidth / viewBox.width;
-                  const newHeight = viewBox.height * scale;
-                  const centerX = viewBox.x + viewBox.width / 2;
-                  const centerY = viewBox.y + viewBox.height / 2;
-                  handleViewBoxChange({
-                    x: centerX - clampedWidth / 2,
-                    y: centerY - newHeight / 2,
-                    width: clampedWidth,
-                    height: newHeight,
-                  });
-                }}
-                aria-label="Zoom out"
-                title="Zoom out"
-              >
-                −
-              </button>
+          {!appState.is3DMode && (
+            // Overlay zoom controls as sibling to avoid clipping/stacking
+            <div className="pointer-events-none absolute inset-0">
+              <div className="pointer-events-auto fixed bottom-6 left-6 z-50 flex flex-col space-y-2">
+                <button
+                  className="w-9 h-9 rounded-full bg-white shadow flex items-center justify-center border"
+                  onClick={() => {
+                    const { viewBox } = appState.canvas;
+                    const clampedWidth = Math.max(
+                      200,
+                      Math.min(5000, viewBox.width * 0.97)
+                    );
+                    const scale = clampedWidth / viewBox.width;
+                    const newHeight = viewBox.height * scale;
+                    const centerX = viewBox.x + viewBox.width / 2;
+                    const centerY = viewBox.y + viewBox.height / 2;
+                    handleViewBoxChange({
+                      x: centerX - clampedWidth / 2,
+                      y: centerY - newHeight / 2,
+                      width: clampedWidth,
+                      height: newHeight,
+                    });
+                  }}
+                  aria-label="Zoom in"
+                  title="Zoom in"
+                >
+                  +
+                </button>
+                <button
+                  className="w-9 h-9 rounded-full bg-white shadow flex items-center justify-center border"
+                  onClick={() => {
+                    const { viewBox } = appState.canvas;
+                    const clampedWidth = Math.max(
+                      200,
+                      Math.min(5000, viewBox.width * 1.03)
+                    );
+                    const scale = clampedWidth / viewBox.width;
+                    const newHeight = viewBox.height * scale;
+                    const centerX = viewBox.x + viewBox.width / 2;
+                    const centerY = viewBox.y + viewBox.height / 2;
+                    handleViewBoxChange({
+                      x: centerX - clampedWidth / 2,
+                      y: centerY - newHeight / 2,
+                      width: clampedWidth,
+                      height: newHeight,
+                    });
+                  }}
+                  aria-label="Zoom out"
+                  title="Zoom out"
+                >
+                  −
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         <div className="w-80 bg-white border-l border-gray-200 flex-shrink-0 overflow-y-auto">

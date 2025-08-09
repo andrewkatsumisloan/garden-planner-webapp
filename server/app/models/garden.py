@@ -60,6 +60,7 @@ class GardenElement(Base):
     # Structure-specific fields
     width = Column(Float, nullable=True)
     height = Column(Float, nullable=True)
+    z_height = Column(Float, nullable=True)
     label = Column(String(255), nullable=True)
     color = Column(String(7), nullable=True)  # Hex color
     shape = Column(String(50), nullable=True)

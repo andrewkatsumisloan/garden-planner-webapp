@@ -24,6 +24,7 @@ interface GardenCanvasProps {
   onHistorySnapshot: () => void;
   showPlantSpacing?: boolean;
   draggingPlant?: Plant | null;
+  is3DMode?: boolean;
 }
 
 export function GardenCanvas({
@@ -39,8 +40,10 @@ export function GardenCanvas({
   onHistorySnapshot,
   showPlantSpacing = false,
   draggingPlant = null,
+  is3DMode = false,
 }: GardenCanvasProps) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const groupRef = useRef<SVGGElement>(null);
   const interactionState = useRef({
     isPanning: false,
     isDrawing: false,
@@ -57,6 +60,17 @@ export function GardenCanvas({
   });
 
   const { viewBox, gridSize, elements } = canvasState;
+
+  // Isometric projection helper for simple 3D extrusion
+  const isoOffset = useCallback(
+    (heightFt: number) => {
+      const scale = Math.sqrt(viewBox.width / 1000);
+      const pxPerFt = gridSize; // assume 1 grid = 1 ft
+      const offset = (heightFt || 0) * pxPerFt * 0.25 * scale;
+      return { dx: offset, dy: -offset };
+    },
+    [gridSize, viewBox.width]
+  );
 
   const getStructureMaterial = useCallback((label: string, color: string) => {
     const lowerLabel = label.toLowerCase();
@@ -113,16 +127,21 @@ export function GardenCanvas({
 
   const screenToSVG = useCallback(
     (clientX: number, clientY: number): Position => {
-      if (!svgRef.current) return { x: 0, y: 0 };
-      const pt = svgRef.current.createSVGPoint();
+      const svgEl = svgRef.current;
+      if (!svgEl) return { x: 0, y: 0 };
+      const pt = svgEl.createSVGPoint();
       pt.x = clientX;
       pt.y = clientY;
-      const svgPoint = pt.matrixTransform(
-        svgRef.current.getScreenCTM()?.inverse()
-      );
+      const target = (is3DMode && groupRef.current
+        ? groupRef.current
+        : svgEl) as unknown as SVGGraphicsElement;
+      const ctm = target.getScreenCTM();
+      if (!ctm) return { x: 0, y: 0 };
+      const inv = ctm.inverse();
+      const svgPoint = pt.matrixTransform(inv);
       return { x: svgPoint.x, y: svgPoint.y };
     },
-    []
+    [is3DMode]
   );
 
   const snapToGrid = useCallback(
@@ -353,6 +372,17 @@ export function GardenCanvas({
     return () => svgElement.removeEventListener("wheel", handleWheel);
   }, [onViewBoxChange, screenToSVG, viewBox]);
 
+  // Compute a simple street-level tilt transform
+  const tiltTransform = useCallback(() => {
+    if (!is3DMode) return undefined;
+    const tiltDeg = 25; // fixed tilt angle
+    const rad = (tiltDeg * Math.PI) / 180;
+    const shearXByY = -Math.sin(rad) * 0.5; // shear factor
+    const scaleY = Math.cos(rad); // foreshortening
+    // matrix(a b c d e f) maps to [[a c e],[b d f],[0 0 1]]
+    return `matrix(1 0 ${shearXByY} ${scaleY} 0 0)`;
+  }, [is3DMode]);
+
   return (
     <div className="relative w-full h-full bg-gray-50 overflow-hidden">
       <svg
@@ -535,31 +565,179 @@ export function GardenCanvas({
             />
           </pattern>
         </defs>
-        <rect
-          x={viewBox.x}
-          y={viewBox.y}
-          width={viewBox.width}
-          height={viewBox.height}
-          fill="url(#grid)"
-        />
+        <g ref={groupRef} transform={tiltTransform()}>
+          <rect
+            x={viewBox.x}
+            y={viewBox.y}
+            width={viewBox.width}
+            height={viewBox.height}
+            fill="url(#grid)"
+          />
 
-        <g className="elements">
-          {elements.map((element) => {
-            const isSelected = selectedElementId === element.id;
-            const selectionStroke = "#2563eb";
+          <g className="elements">
+            {elements.map((element) => {
+              const isSelected = selectedElementId === element.id;
+              const selectionStroke = "#2563eb";
 
-            if (element.type === "structure") {
-              const el = element as Structure;
-              const material = getStructureMaterial(el.label, el.color);
-              const cornerRadius =
-                Math.min(el.size.width, el.size.height) * 0.05; // 5% of smallest dimension
-              const fontSize = 14 * Math.sqrt(viewBox.width / 1000);
+              if (element.type === "structure") {
+                const el = element as Structure;
+                const material = getStructureMaterial(el.label, el.color);
+                const cornerRadius =
+                  Math.min(el.size.width, el.size.height) * 0.05; // 5% of smallest dimension
+                const fontSize = 14 * Math.sqrt(viewBox.width / 1000);
 
-              if (el.shape === "ellipse") {
-                const cx = el.position.x + el.size.width / 2;
-                const cy = el.position.y + el.size.height / 2;
-                const rx = el.size.width / 2;
-                const ry = el.size.height / 2;
+                if (el.shape === "ellipse") {
+                  const cx = el.position.x + el.size.width / 2;
+                  const cy = el.position.y + el.size.height / 2;
+                  const rx = el.size.width / 2;
+                  const ry = el.size.height / 2;
+                  return (
+                    <g
+                      key={el.id}
+                      data-element-id={el.id}
+                      className={
+                        activeTool === "select"
+                          ? "cursor-move"
+                          : "cursor-pointer"
+                      }
+                    >
+                      <ellipse
+                        cx={cx}
+                        cy={cy}
+                        rx={rx}
+                        ry={ry}
+                        fill={material.fill}
+                        filter={
+                          material.shadow ? "url(#structureShadow)" : undefined
+                        }
+                        stroke={
+                          isSelected ? selectionStroke : "rgba(0,0,0,0.1)"
+                        }
+                        strokeWidth={
+                          isSelected
+                            ? 3 * Math.sqrt(viewBox.width / 1000)
+                            : 1 * Math.sqrt(viewBox.width / 1000)
+                        }
+                      />
+                      <text
+                        x={cx}
+                        y={cy}
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fill={material.textColor}
+                        fontSize={fontSize}
+                        className="pointer-events-none font-semibold"
+                        style={{
+                          textShadow:
+                            material.textColor === "#ffffff"
+                              ? "1px 1px 2px rgba(0,0,0,0.7)"
+                              : "1px 1px 2px rgba(255,255,255,0.7)",
+                          filter: "drop-shadow(1px 1px 1px rgba(0,0,0,0.3))",
+                        }}
+                      >
+                        {el.label}
+                      </text>
+                    </g>
+                  );
+                }
+
+                if (!is3DMode) {
+                  return (
+                    <g
+                      key={el.id}
+                      data-element-id={el.id}
+                      className={
+                        activeTool === "select"
+                          ? "cursor-move"
+                          : "cursor-pointer"
+                      }
+                    >
+                      {/* Main structure with rounded corners and texture */}
+                      <rect
+                        x={el.position.x}
+                        y={el.position.y}
+                        width={el.size.width}
+                        height={el.size.height}
+                        rx={cornerRadius}
+                        ry={cornerRadius}
+                        fill={material.fill}
+                        filter={
+                          material.shadow ? "url(#structureShadow)" : undefined
+                        }
+                        stroke={
+                          isSelected ? selectionStroke : "rgba(0,0,0,0.1)"
+                        }
+                        strokeWidth={
+                          isSelected
+                            ? 3 * Math.sqrt(viewBox.width / 1000)
+                            : 1 * Math.sqrt(viewBox.width / 1000)
+                        }
+                      />
+
+                      {/* Subtle highlight along top edge for depth */}
+                      <rect
+                        x={el.position.x + 2}
+                        y={el.position.y + 2}
+                        width={el.size.width - 4}
+                        height={Math.max(4, el.size.height * 0.1)}
+                        rx={cornerRadius * 0.8}
+                        ry={cornerRadius * 0.8}
+                        fill="rgba(255,255,255,0.15)"
+                        className="pointer-events-none"
+                      />
+
+                      {/* Text with better styling */}
+                      <text
+                        x={el.position.x + el.size.width / 2}
+                        y={el.position.y + el.size.height / 2}
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fill={material.textColor}
+                        fontSize={fontSize}
+                        className="pointer-events-none font-semibold"
+                        style={{
+                          textShadow:
+                            material.textColor === "#ffffff"
+                              ? "1px 1px 2px rgba(0,0,0,0.7)"
+                              : "1px 1px 2px rgba(255,255,255,0.7)",
+                          filter: "drop-shadow(1px 1px 1px rgba(0,0,0,0.3))",
+                        }}
+                      >
+                        {el.label}
+                      </text>
+                    </g>
+                  );
+                }
+
+                // 3D mode (rectangle only): isometric extrusion
+                const heightFt = el.zHeight ?? 0;
+                const { dx, dy } = isoOffset(heightFt);
+                const x = el.position.x;
+                const y = el.position.y;
+                const w = el.size.width;
+                const h = el.size.height;
+
+                const top = [
+                  `${x},${y}`,
+                  `${x + w},${y}`,
+                  `${x + w + dx},${y + dy}`,
+                  `${x + dx},${y + dy}`,
+                ].join(" ");
+
+                const right = [
+                  `${x + w},${y}`,
+                  `${x + w + dx},${y + dy}`,
+                  `${x + w + dx},${y + dy + h}`,
+                  `${x + w},${y + h}`,
+                ].join(" ");
+
+                const left = [
+                  `${x},${y}`,
+                  `${x + dx},${y + dy}`,
+                  `${x + dx},${y + dy + h}`,
+                  `${x},${y + h}`,
+                ].join(" ");
+
                 return (
                   <g
                     key={el.id}
@@ -568,11 +746,20 @@ export function GardenCanvas({
                       activeTool === "select" ? "cursor-move" : "cursor-pointer"
                     }
                   >
-                    <ellipse
-                      cx={cx}
-                      cy={cy}
-                      rx={rx}
-                      ry={ry}
+                    {/* Extrusion walls */}
+                    <polygon
+                      points={right}
+                      fill={material.fill}
+                      opacity={0.9}
+                    />
+                    <polygon
+                      points={left}
+                      fill={material.fill}
+                      opacity={0.85}
+                    />
+                    {/* Top face */}
+                    <polygon
+                      points={top}
                       fill={material.fill}
                       filter={
                         material.shadow ? "url(#structureShadow)" : undefined
@@ -584,9 +771,21 @@ export function GardenCanvas({
                           : 1 * Math.sqrt(viewBox.width / 1000)
                       }
                     />
+
+                    {/* Front face */}
+                    <rect
+                      x={x}
+                      y={y}
+                      width={w}
+                      height={h}
+                      fill={material.fill}
+                      opacity={0.95}
+                    />
+
+                    {/* Label centered on front face */}
                     <text
-                      x={cx}
-                      y={cy}
+                      x={x + w / 2}
+                      y={y + h / 2}
                       textAnchor="middle"
                       dominantBaseline="middle"
                       fill={material.textColor}
@@ -604,134 +803,72 @@ export function GardenCanvas({
                     </text>
                   </g>
                 );
-              }
+              } else if (element.type === "plant") {
+                const el = element as PlantInstance;
+                const radius = 10 * Math.sqrt(viewBox.width / 1000);
+                const spacingRadius = (el.plant.spacing * gridSize) / 2;
 
-              return (
-                <g
-                  key={el.id}
-                  data-element-id={el.id}
-                  className={
-                    activeTool === "select" ? "cursor-move" : "cursor-pointer"
-                  }
-                >
-                  {/* Main structure with rounded corners and texture */}
-                  <rect
-                    x={el.position.x}
-                    y={el.position.y}
-                    width={el.size.width}
-                    height={el.size.height}
-                    rx={cornerRadius}
-                    ry={cornerRadius}
-                    fill={material.fill}
-                    filter={
-                      material.shadow ? "url(#structureShadow)" : undefined
+                return (
+                  <g
+                    key={el.id}
+                    data-element-id={el.id}
+                    className={
+                      activeTool === "select" ? "cursor-move" : "cursor-pointer"
                     }
-                    stroke={isSelected ? selectionStroke : "rgba(0,0,0,0.1)"}
-                    strokeWidth={
-                      isSelected
-                        ? 3 * Math.sqrt(viewBox.width / 1000)
-                        : 1 * Math.sqrt(viewBox.width / 1000)
-                    }
-                  />
-
-                  {/* Subtle highlight along top edge for depth */}
-                  <rect
-                    x={el.position.x + 2}
-                    y={el.position.y + 2}
-                    width={el.size.width - 4}
-                    height={Math.max(4, el.size.height * 0.1)}
-                    rx={cornerRadius * 0.8}
-                    ry={cornerRadius * 0.8}
-                    fill="rgba(255,255,255,0.15)"
-                    className="pointer-events-none"
-                  />
-
-                  {/* Text with better styling */}
-                  <text
-                    x={el.position.x + el.size.width / 2}
-                    y={el.position.y + el.size.height / 2}
-                    textAnchor="middle"
-                    dominantBaseline="middle"
-                    fill={material.textColor}
-                    fontSize={fontSize}
-                    className="pointer-events-none font-semibold"
-                    style={{
-                      textShadow:
-                        material.textColor === "#ffffff"
-                          ? "1px 1px 2px rgba(0,0,0,0.7)"
-                          : "1px 1px 2px rgba(255,255,255,0.7)",
-                      filter: "drop-shadow(1px 1px 1px rgba(0,0,0,0.3))",
-                    }}
                   >
-                    {el.label}
-                  </text>
-                </g>
-              );
-            } else if (element.type === "plant") {
-              const el = element as PlantInstance;
-              const radius = 10 * Math.sqrt(viewBox.width / 1000);
-              const spacingRadius = (el.plant.spacing * gridSize) / 2;
-
-              return (
-                <g
-                  key={el.id}
-                  data-element-id={el.id}
-                  className={
-                    activeTool === "select" ? "cursor-move" : "cursor-pointer"
-                  }
-                >
-                  {(showPlantSpacing || isSelected) && (
+                    {(showPlantSpacing || isSelected) && (
+                      <circle
+                        cx={el.position.x}
+                        cy={el.position.y}
+                        r={spacingRadius}
+                        fill={
+                          showPlantSpacing
+                            ? "rgba(16, 185, 129, 0.08)"
+                            : "rgba(37, 99, 235, 0.1)"
+                        }
+                        stroke={
+                          showPlantSpacing
+                            ? "rgba(16, 185, 129, 0.5)"
+                            : "rgba(37, 99, 235, 0.4)"
+                        }
+                        strokeWidth={1 * Math.sqrt(viewBox.width / 1000)}
+                        strokeDasharray="4,4"
+                      />
+                    )}
                     <circle
                       cx={el.position.x}
                       cy={el.position.y}
-                      r={spacingRadius}
-                      fill={
-                        showPlantSpacing
-                          ? "rgba(16, 185, 129, 0.08)"
-                          : "rgba(37, 99, 235, 0.1)"
+                      r={radius}
+                      fill="#16a34a"
+                      stroke={isSelected ? selectionStroke : "#15803d"}
+                      strokeWidth={
+                        isSelected
+                          ? 3 * Math.sqrt(viewBox.width / 1000)
+                          : 1.5 * Math.sqrt(viewBox.width / 1000)
                       }
-                      stroke={
-                        showPlantSpacing
-                          ? "rgba(16, 185, 129, 0.5)"
-                          : "rgba(37, 99, 235, 0.4)"
-                      }
-                      strokeWidth={1 * Math.sqrt(viewBox.width / 1000)}
-                      strokeDasharray="4,4"
                     />
-                  )}
-                  <circle
-                    cx={el.position.x}
-                    cy={el.position.y}
-                    r={radius}
-                    fill="#16a34a"
-                    stroke={isSelected ? selectionStroke : "#15803d"}
-                    strokeWidth={
-                      isSelected
-                        ? 3 * Math.sqrt(viewBox.width / 1000)
-                        : 1.5 * Math.sqrt(viewBox.width / 1000)
-                    }
-                  />
-                  {viewBox.width < 3000 && (
-                    <text
-                      x={el.position.x}
-                      y={
-                        el.position.y +
-                        radius +
-                        12 * Math.sqrt(viewBox.width / 1000)
-                      }
-                      textAnchor="middle"
-                      fill="#333"
-                      fontSize={12 * Math.sqrt(viewBox.width / 1000)}
-                      className="pointer-events-none font-medium"
-                    >
-                      {el.plant.commonName}
-                    </text>
-                  )}
-                </g>
-              );
-            }
-            return null;
-          })}
+                    {viewBox.width < 3000 && (
+                      <text
+                        x={el.position.x}
+                        y={
+                          el.position.y +
+                          radius +
+                          12 * Math.sqrt(viewBox.width / 1000)
+                        }
+                        textAnchor="middle"
+                        fill="#333"
+                        fontSize={12 * Math.sqrt(viewBox.width / 1000)}
+                        className="pointer-events-none font-medium"
+                      >
+                        {el.plant.commonName}
+                      </text>
+                    )}
+                  </g>
+                );
+              }
+              return null;
+            })}
+          </g>
         </g>
 
         {/* Drag ghost for plants: green dot with faint spacing radius */}

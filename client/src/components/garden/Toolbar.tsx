@@ -7,6 +7,7 @@ import {
   FolderOpen,
   StickyNote,
   Check,
+  Box,
 } from "lucide-react";
 import { Button } from "../ui/button";
 import {
@@ -29,6 +30,8 @@ interface ToolbarProps {
   onShowNotes?: () => void;
   showPlantSpacing?: boolean;
   onTogglePlantSpacing?: () => void;
+  is3DMode?: boolean;
+  onToggle3DMode?: () => void;
 }
 
 export function Toolbar({
@@ -43,6 +46,8 @@ export function Toolbar({
   onShowNotes,
   showPlantSpacing = false,
   onTogglePlantSpacing,
+  is3DMode = false,
+  onToggle3DMode,
 }: ToolbarProps) {
   const [shapeMenuOpen, setShapeMenuOpen] = useState(false);
   return (
@@ -129,6 +134,15 @@ export function Toolbar({
           className="flex items-center gap-2"
         >
           {showPlantSpacing ? "Hide Spacing" : "Show Spacing"}
+        </Button>
+        <Button
+          variant={is3DMode ? "default" : "outline"}
+          size="sm"
+          onClick={onToggle3DMode}
+          className="flex items-center gap-2"
+        >
+          <Box className="h-4 w-4" />
+          {is3DMode ? "3D On" : "3D Off"}
         </Button>
       </div>
 

@@ -265,6 +265,7 @@ class GardenService {
         ...base,
         width: element.size.width,
         height: element.size.height,
+        z_height: element.zHeight,
         label: element.label,
         color: element.color,
         shape: element.shape,
@@ -313,6 +314,7 @@ class GardenService {
         label: saved.label || '',
         color: saved.color || '#8B4513',
         shape: (saved.shape as StructureShape) || 'rectangle',
+        zHeight: saved.z_height ?? 0,
       };
     } else if (saved.element_type === 'plant') {
       return {

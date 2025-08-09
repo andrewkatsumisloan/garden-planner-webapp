@@ -372,7 +372,7 @@ async def ask_gardening_question_with_context(
         elif el.element_type == "structure":
             base.update(
                 {
-                    "size": {"width": el.width, "height": el.height},
+                    "size": {"width": el.width, "height": el.height, "z": el.z_height},
                     "label": el.label,
                     "color": el.color,
                     "shape": el.shape,
