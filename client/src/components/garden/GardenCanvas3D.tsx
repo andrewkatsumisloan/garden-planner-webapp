@@ -1,7 +1,8 @@
-import { useMemo, useState, useRef } from "react";
-import { Canvas, useLoader, useThree } from "@react-three/fiber";
+import { useMemo, useState } from "react";
+import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
-import { TextureLoader, RepeatWrapping, Raycaster, Vector3, Plane, Color } from "three";
+import { Raycaster, Vector3, Vector2, Plane, Color } from "three";
+import type { ThreeEvent } from "@react-three/fiber";
 import {
   CanvasState,
   CanvasElement,
@@ -13,18 +14,21 @@ interface GardenCanvas3DProps {
   canvasState: CanvasState;
   selectedElementId: string | null;
   onSelectionChange: (elementId: string | null) => void;
-  onElementMove?: (elementId: string, newPosition: { x: number; y: number }) => void;
+  onElementMove?: (
+    elementId: string,
+    newPosition: { x: number; y: number }
+  ) => void;
 }
 
-type GroundTexture = 'grass' | 'dirt' | 'concrete' | 'wood' | 'gravel';
+type GroundTexture = "grass" | "dirt" | "concrete" | "wood" | "gravel";
 
 // Component to handle 3D dragging
-function DraggableObject({ 
-  children, 
+function DraggableObject({
+  children,
   onDrag,
   onSelect,
-  elementId
-}: { 
+  elementId,
+}: {
   children: React.ReactNode;
   onDrag?: (newPosition: { x: number; y: number }) => void;
   onSelect: (id: string) => void;
@@ -35,17 +39,20 @@ function DraggableObject({
   const dragPlane = useMemo(() => new Plane(new Vector3(0, 1, 0), 0), []);
   const raycaster = useMemo(() => new Raycaster(), []);
 
-  const handlePointerDown = (e: any) => {
+  const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
     onSelect(elementId);
     setIsDragging(true);
-    
+
     // Disable orbit controls during drag
-    const controls = (gl.domElement.parentElement as any)?.__r3f?.controls;
+    const parent = gl.domElement.parentElement as
+      | (HTMLElement & { __r3f?: { controls?: { enabled: boolean } } })
+      | null;
+    const controls = parent?.__r3f?.controls;
     if (controls) controls.enabled = false;
   };
 
-  const handlePointerMove = (e: any) => {
+  const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
     if (!isDragging || !onDrag) return;
 
     // Convert mouse position to 3D world coordinates
@@ -53,20 +60,23 @@ function DraggableObject({
     const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
-    raycaster.setFromCamera({ x, y }, camera);
+    raycaster.setFromCamera(new Vector2(x, y), camera);
     const intersection = new Vector3();
-    raycaster.ray.intersectPlane(dragPlane, intersection);
+    const result = raycaster.ray.intersectPlane(dragPlane, intersection);
 
-    if (intersection) {
-      onDrag({ x: intersection.x, y: intersection.z });
+    if (result) {
+      onDrag({ x: result.x, y: result.z });
     }
   };
 
   const handlePointerUp = () => {
     setIsDragging(false);
-    
+
     // Re-enable orbit controls
-    const controls = (gl.domElement.parentElement as any)?.__r3f?.controls;
+    const parent = gl.domElement.parentElement as
+      | (HTMLElement & { __r3f?: { controls?: { enabled: boolean } } })
+      | null;
+    const controls = parent?.__r3f?.controls;
     if (controls) controls.enabled = true;
   };
 
@@ -82,13 +92,13 @@ function DraggableObject({
   );
 }
 
-function GroundMesh({ 
-  groundSize, 
-  center, 
-  groundTexture 
-}: { 
-  groundSize: number; 
-  center: { x: number; z: number }; 
+function GroundMesh({
+  groundSize,
+  center,
+  groundTexture,
+}: {
+  groundSize: number;
+  center: { x: number; z: number };
   groundTexture: GroundTexture;
 }) {
   const getGroundMaterial = () => {
@@ -98,45 +108,45 @@ function GroundMesh({
     };
 
     switch (groundTexture) {
-      case 'grass':
+      case "grass":
         return {
           ...baseProps,
-          color: '#22c55e',
+          color: "#22c55e",
           roughness: 0.9,
           metalness: 0.05,
         };
-      case 'dirt':
+      case "dirt":
         return {
           ...baseProps,
-          color: '#92400e',
+          color: "#92400e",
           roughness: 0.95,
           metalness: 0.02,
         };
-      case 'concrete':
+      case "concrete":
         return {
           ...baseProps,
-          color: '#9ca3af',
+          color: "#9ca3af",
           roughness: 0.6,
           metalness: 0.1,
         };
-      case 'wood':
+      case "wood":
         return {
           ...baseProps,
-          color: '#d97706',
+          color: "#d97706",
           roughness: 0.85,
           metalness: 0.02,
         };
-      case 'gravel':
+      case "gravel":
         return {
           ...baseProps,
-          color: '#64748b',
+          color: "#64748b",
           roughness: 0.9,
           metalness: 0.05,
         };
       default:
         return {
           ...baseProps,
-          color: '#f3f4f6',
+          color: "#f3f4f6",
         };
     }
   };
@@ -229,11 +239,7 @@ function StructureMesh({
   }
 
   return (
-    <DraggableObject
-      elementId={el.id}
-      onSelect={onSelect}
-      onDrag={handleMove}
-    >
+    <DraggableObject elementId={el.id} onSelect={onSelect} onDrag={handleMove}>
       <group position={[x, height / 2, z]}>
         <mesh castShadow receiveShadow>
           <boxGeometry args={[width, height, depth]} />
@@ -277,114 +283,173 @@ function PlantMesh({
   const [x, , z] = toWorldPosition(el.position.x, el.position.y);
   const plantType = el.plant.plantType;
 
+  type TreeGeometry = {
+    kind: "tree";
+    trunkRadius: number;
+    trunkHeight: number;
+    canopyRadius: number;
+    canopyHeight: number;
+    color: string;
+    trunkColor: string;
+  };
+  type SphereGeometry = {
+    kind: "sphere";
+    radius: number;
+    height: number;
+    color: string;
+  };
+  type BoxGeometry = {
+    kind: "box";
+    width: number;
+    height: number;
+    depth: number;
+    color: string;
+  };
+  type CylinderGeometry = {
+    kind: "cylinder";
+    radius: number;
+    height: number;
+    color: string;
+  };
+  type PlantGeometry =
+    | TreeGeometry
+    | SphereGeometry
+    | BoxGeometry
+    | CylinderGeometry;
+
   // Different dimensions and shapes based on plant type
-  const getPlantGeometry = () => {
+  const getPlantGeometry = (): PlantGeometry => {
     switch (plantType) {
-      case 'Shade Trees':
-      case 'Fruit Trees':
-        // Trees: Cylinder trunk + sphere canopy
+      case "Shade Trees":
+      case "Fruit Trees":
         return {
+          kind: "tree",
           trunkRadius: 0.2,
           trunkHeight: 3,
           canopyRadius: 2,
           canopyHeight: 2.5,
-          color: '#16a34a',
-          trunkColor: '#92400e'
+          color: "#16a34a",
+          trunkColor: "#92400e",
         };
-      case 'Flowering Shrubs':
-        // Shrubs: Rounded bush shape
+      case "Flowering Shrubs":
         return {
+          kind: "sphere",
           radius: 1,
           height: 1.5,
-          color: '#dc2626', // Reddish for flowering
-          shape: 'sphere'
+          color: "#dc2626",
         };
-      case 'Vegetables':
-        // Vegetables: Low, rectangular beds
+      case "Vegetables":
+        // Render vegetables as shrubs (rounded bushes)
         return {
-          width: 0.8,
-          height: 0.6,
-          depth: 0.8,
-          color: '#15803d',
-          shape: 'box'
+          kind: "sphere",
+          radius: 0.8,
+          height: 0.8,
+          color: "#15803d",
         };
-      case 'Herbs':
-        // Herbs: Small, bushy cylinders
+      case "Herbs":
         return {
+          kind: "cylinder",
           radius: 0.4,
           height: 0.5,
-          color: '#059669',
-          shape: 'cylinder'
+          color: "#059669",
         };
       default:
         return {
+          kind: "cylinder",
           radius: 0.5,
           height: 1,
-          color: '#16a34a',
-          shape: 'cylinder'
+          color: "#16a34a",
         };
     }
   };
 
-  const geometry = getPlantGeometry();
+  const geometry: PlantGeometry = getPlantGeometry();
 
   const renderPlant = () => {
-    if (plantType === 'Shade Trees' || plantType === 'Fruit Trees') {
-      // Tree with trunk and canopy
-      return (
-        <>
-          {/* Trunk */}
-          <mesh position={[0, -geometry.canopyHeight / 2 + geometry.trunkHeight / 2, 0]} castShadow>
-            <cylinderGeometry args={[geometry.trunkRadius, geometry.trunkRadius, geometry.trunkHeight, 8]} />
-            <meshStandardMaterial color={geometry.trunkColor} />
-          </mesh>
-          {/* Canopy */}
-          <mesh position={[0, geometry.trunkHeight / 2, 0]} castShadow receiveShadow>
-            <sphereGeometry args={[geometry.canopyRadius, 16, 12]} />
+    switch (geometry.kind) {
+      case "tree":
+        return (
+          <>
+            <mesh
+              position={[
+                0,
+                -geometry.canopyHeight / 2 + geometry.trunkHeight / 2,
+                0,
+              ]}
+              castShadow
+            >
+              <cylinderGeometry
+                args={[
+                  geometry.trunkRadius,
+                  geometry.trunkRadius,
+                  geometry.trunkHeight,
+                  8,
+                ]}
+              />
+              <meshStandardMaterial color={geometry.trunkColor} />
+            </mesh>
+            <mesh
+              position={[0, geometry.trunkHeight / 2, 0]}
+              castShadow
+              receiveShadow
+            >
+              <sphereGeometry args={[geometry.canopyRadius, 16, 12]} />
+              <meshStandardMaterial color={geometry.color} />
+            </mesh>
+          </>
+        );
+      case "sphere":
+        return (
+          <mesh castShadow receiveShadow>
+            <sphereGeometry args={[geometry.radius, 16, 12]} />
             <meshStandardMaterial color={geometry.color} />
           </mesh>
-        </>
-      );
-    } else if (geometry.shape === 'sphere') {
-      return (
-        <mesh castShadow receiveShadow>
-          <sphereGeometry args={[geometry.radius, 16, 12]} />
-          <meshStandardMaterial color={geometry.color} />
-        </mesh>
-      );
-    } else if (geometry.shape === 'box') {
-      return (
-        <mesh castShadow receiveShadow>
-          <boxGeometry args={[geometry.width, geometry.height, geometry.depth]} />
-          <meshStandardMaterial color={geometry.color} />
-        </mesh>
-      );
-    } else {
-      // Default cylinder
-      return (
-        <mesh castShadow receiveShadow>
-          <cylinderGeometry args={[geometry.radius, geometry.radius, geometry.height, 16]} />
-          <meshStandardMaterial color={geometry.color} />
-        </mesh>
-      );
+        );
+      case "box":
+        return (
+          <mesh castShadow receiveShadow>
+            <boxGeometry
+              args={[geometry.width, geometry.height, geometry.depth]}
+            />
+            <meshStandardMaterial color={geometry.color} />
+          </mesh>
+        );
+      case "cylinder":
+      default:
+        return (
+          <mesh castShadow receiveShadow>
+            <cylinderGeometry
+              args={[geometry.radius, geometry.radius, geometry.height, 16]}
+            />
+            <meshStandardMaterial color={geometry.color} />
+          </mesh>
+        );
     }
   };
 
   const getSelectionRingSize = () => {
-    if (plantType === 'Shade Trees' || plantType === 'Fruit Trees') {
-      return geometry.canopyRadius * 1.2;
-    } else if (geometry.shape === 'box') {
-      return Math.max(geometry.width, geometry.depth) * 0.8;
-    } else {
-      return (geometry.radius || 0.5) * 1.4;
+    switch (geometry.kind) {
+      case "tree":
+        return geometry.canopyRadius * 1.2;
+      case "box":
+        return Math.max(geometry.width, geometry.depth) * 0.8;
+      case "sphere":
+      case "cylinder":
+      default:
+        return geometry.radius * 1.4;
     }
   };
 
   const getPlantHeight = () => {
-    if (plantType === 'Shade Trees' || plantType === 'Fruit Trees') {
-      return geometry.trunkHeight + geometry.canopyHeight;
+    switch (geometry.kind) {
+      case "tree":
+        return geometry.trunkHeight + geometry.canopyHeight;
+      case "box":
+      case "sphere":
+      case "cylinder":
+      default:
+        return geometry.height;
     }
-    return geometry.height || 1;
   };
 
   const height = getPlantHeight();
@@ -396,11 +461,7 @@ function PlantMesh({
   };
 
   return (
-    <DraggableObject
-      elementId={el.id}
-      onSelect={onSelect}
-      onDrag={handleMove}
-    >
+    <DraggableObject elementId={el.id} onSelect={onSelect} onDrag={handleMove}>
       <group position={[x, height / 2, z]}>
         {renderPlant()}
         {isSelected && (
@@ -408,7 +469,9 @@ function PlantMesh({
             position={[0, height / 2 + 0.1, 0]}
             rotation={[-Math.PI / 2, 0, 0]}
           >
-            <ringGeometry args={[getSelectionRingSize() * 0.9, getSelectionRingSize(), 16]} />
+            <ringGeometry
+              args={[getSelectionRingSize() * 0.9, getSelectionRingSize(), 16]}
+            />
             <meshBasicMaterial color="#2563eb" transparent opacity={0.7} />
           </mesh>
         )}
@@ -424,7 +487,7 @@ export function GardenCanvas3D({
   onElementMove,
 }: GardenCanvas3DProps) {
   const { elements, viewBox } = canvasState;
-  const [groundTexture, setGroundTexture] = useState<GroundTexture>('grass');
+  const [groundTexture, setGroundTexture] = useState<GroundTexture>("grass");
 
   // Compute scene bounds from elements, fallback to viewBox
   const { center, groundSize } = useMemo(() => {
@@ -515,7 +578,7 @@ export function GardenCanvas3D({
         onPointerMissed={() => onSelectionChange(null)}
         onCreated={({ scene }) => {
           // Set sky background color
-          scene.background = new Color('#87ceeb'); // Sky blue
+          scene.background = new Color("#87ceeb"); // Sky blue
         }}
       >
         {/* Lights */}
@@ -536,10 +599,10 @@ export function GardenCanvas3D({
         <hemisphereLight intensity={0.15} groundColor={"#cbd5e1"} />
 
         {/* Ground */}
-        <GroundMesh 
-          groundSize={groundSize} 
-          center={center} 
-          groundTexture={groundTexture} 
+        <GroundMesh
+          groundSize={groundSize}
+          center={center}
+          groundTexture={groundTexture}
         />
 
         {/* Grid helper */}
@@ -557,7 +620,11 @@ export function GardenCanvas3D({
                 el={el as Structure}
                 isSelected={selectedElementId === el.id}
                 onSelect={onSelectionChange}
-                onMove={onElementMove ? (newPos) => onElementMove(el.id, newPos) : undefined}
+                onMove={
+                  onElementMove
+                    ? (newPos) => onElementMove(el.id, newPos)
+                    : undefined
+                }
               />
             );
           }
@@ -568,7 +635,11 @@ export function GardenCanvas3D({
                 el={el as PlantInstance}
                 isSelected={selectedElementId === el.id}
                 onSelect={onSelectionChange}
-                onMove={onElementMove ? (newPos) => onElementMove(el.id, newPos) : undefined}
+                onMove={
+                  onElementMove
+                    ? (newPos) => onElementMove(el.id, newPos)
+                    : undefined
+                }
               />
             );
           }
